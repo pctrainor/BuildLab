@@ -375,8 +375,8 @@ Include realistic mock data and full interactivity.
       }
     }
 
-    // Generate preview URL (would be deployed to your hosting platform)
-    const previewUrl = `https://preview.buildlab.app/${projectSlug}`
+    // Generate preview URL only if code was generated
+    const previewUrl = genOptions.codePrototype ? `https://preview.buildlab.app/${projectSlug}` : null
 
     // Store generated content
     const { error: insertError } = await supabase
