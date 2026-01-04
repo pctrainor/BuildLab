@@ -26,12 +26,18 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:3000',
-    // Allow Vercel preview deployments
-    ...(frontendUrl.includes('vercel.app') ? [frontendUrl] : []),
   ]
   
-  // If origin is in allowedOrigins, use it. Otherwise fall back to first allowed.
-  const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
+  // Check if origin is a Vercel preview URL for this project
+  const isVercelPreview = origin && (
+    origin.includes('pctrainors-projects.vercel.app') ||
+    origin.includes('buildlab') && origin.includes('.vercel.app')
+  )
+  
+  // If origin is in allowedOrigins or is a Vercel preview, use it
+  const corsOrigin = origin && (allowedOrigins.includes(origin) || isVercelPreview) 
+    ? origin 
+    : allowedOrigins[0]
   
   return {
     'Access-Control-Allow-Origin': corsOrigin,
