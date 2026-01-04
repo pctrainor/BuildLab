@@ -37,7 +37,7 @@ export function AuthPage() {
       if (error) {
         setError(error.message)
       } else {
-        navigate('/')
+        navigate('/competitions')
       }
     }
   }

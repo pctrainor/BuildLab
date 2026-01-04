@@ -1293,6 +1293,7 @@ Include realistic mock data and full interactivity.
       JSON.stringify({
         success: true,
         project: {
+          project_slug: projectSlug,
           preview_url: previewUrl,
           github_url: githubUrl,
           documents: {

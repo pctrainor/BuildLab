@@ -12,7 +12,7 @@ export function EmailConfirmedPage() {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer)
-          navigate('/dashboard')
+          navigate('/competitions')
           return 0
         }
         return prev - 1
@@ -56,15 +56,15 @@ export function EmailConfirmedPage() {
 
           <div className="bg-gradient-to-r from-cyan-500/10 to-purple-500/10 rounded-xl p-4 mb-6 border border-cyan-500/20">
             <p className="text-cyan-300 font-medium">
-              Redirecting to dashboard in {countdown}s...
+              Redirecting to competitions in {countdown}s...
             </p>
           </div>
 
           <Link
-            to="/dashboard"
+            to="/competitions"
             className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-semibold rounded-xl hover:opacity-90 transition-all"
           >
-            Go to Dashboard Now
+            Go to Competitions Now
             <ArrowRight size={18} />
           </Link>
 

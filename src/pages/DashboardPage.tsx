@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import type { BuildRequest } from '../lib/database.types'
@@ -38,6 +38,7 @@ interface BuildRequestWithProject extends BuildRequest {
 export function DashboardPage() {
   const { user, profile } = useAuthStore()
   const { showToast } = useToast()
+  const navigate = useNavigate()
   const [requests, setRequests] = useState<BuildRequestWithProject[]>([])
   const [generatingId, setGeneratingId] = useState<string | null>(null)
   const [stats, setStats] = useState({
@@ -150,6 +151,17 @@ export function DashboardPage() {
         // Handle case where function returns error in data
         console.error('Function returned error in data:', data)
         showToast((data as { error: string }).error || 'Generation failed', 'error')
+      } else if (data && typeof data === 'object' && 'success' in data && data.success) {
+        // Generation completed successfully
+        console.log('Generation completed successfully!', data)
+        const projectData = data as { success: boolean; project: { project_slug: string; preview_url: string; github_url: string } }
+        showToast('AI generation complete! Redirecting to results...', 'success')
+        setModalOpen(false)
+        
+        // Navigate to the generated project page
+        if (projectData.project?.project_slug) {
+          navigate(`/project/${projectData.project.project_slug}`)
+        }
       } else {
         console.log('Generation started successfully!')
         showToast('AI generation started! This may take a few minutes.', 'success')

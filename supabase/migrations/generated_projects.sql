@@ -44,6 +44,10 @@ ADD COLUMN IF NOT EXISTS github_url TEXT;
 -- RLS Policies
 ALTER TABLE generated_projects ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first (if they exist) to make this idempotent
+DROP POLICY IF EXISTS "Users can view own generated projects" ON generated_projects;
+DROP POLICY IF EXISTS "Anyone can view completed public project previews" ON generated_projects;
+
 -- Users can view their own generated projects
 CREATE POLICY "Users can view own generated projects"
 ON generated_projects FOR SELECT
