@@ -3,10 +3,47 @@ import { supabase } from './supabase'
 import { useAuthStore } from './auth'
 
 const FREE_WEEKLY_SUBMISSIONS = 1
+
+// Basic submission packs
 const SUBMISSION_PACK_SIZES = [
   { count: 3, price: 5, label: '3 Submissions', popular: false },
   { count: 5, price: 7, label: '5 Submissions', popular: true },
   { count: 10, price: 12, label: '10 Submissions', popular: false },
+]
+
+// Premium tiers with AI generation
+const PREMIUM_TIERS = [
+  {
+    id: 'pro_generate',
+    name: 'Pro Generate',
+    price: 29,
+    submissions: 5,
+    features: [
+      '5 premium submissions',
+      'AI-generated Market Research',
+      'Project Charter & PRD',
+      'Technical Specification',
+      'Working prototype (hosted)',
+      'GitHub repository',
+      'Shareable preview link'
+    ],
+    popular: true
+  },
+  {
+    id: 'premium',
+    name: 'Premium',
+    price: 99,
+    submissions: 10,
+    features: [
+      '10 premium submissions',
+      'Everything in Pro Generate',
+      'Featured placement',
+      'Priority builder matching',
+      '1-on-1 consultation call',
+      'Priority winner selection'
+    ],
+    popular: false
+  }
 ]
 
 interface SubmissionLimits {
@@ -199,7 +236,7 @@ export function useSubmissionLimits(): SubmissionLimits & {
   return { ...limits, refresh, useSubmission }
 }
 
-export { FREE_WEEKLY_SUBMISSIONS, SUBMISSION_PACK_SIZES }
+export { FREE_WEEKLY_SUBMISSIONS, SUBMISSION_PACK_SIZES, PREMIUM_TIERS }
 
 // Create Stripe checkout session for purchasing submission packs
 export async function createCheckoutSession(packSize: number): Promise<string | null> {
@@ -234,5 +271,77 @@ export async function createCheckoutSession(packSize: number): Promise<string | 
   } catch (error) {
     console.error('Error creating checkout session:', error)
     return null
+  }
+}
+
+// Create premium checkout session with AI generation
+export async function createPremiumCheckoutSession(
+  tierId: 'pro_generate' | 'premium'
+): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session?.access_token) {
+      throw new Error('Not authenticated')
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const response = await fetch(`${supabaseUrl}/functions/v1/create-checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        tier_id: tierId,
+        is_premium: true,
+        success_url: `${window.location.origin}/submit?success=true&premium=true`,
+        cancel_url: `${window.location.origin}/submit?cancelled=true`,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create checkout session')
+    }
+
+    const { url } = await response.json()
+    return url
+  } catch (error) {
+    console.error('Error creating premium checkout session:', error)
+    return null
+  }
+}
+
+// Trigger AI project generation for a build request
+export async function triggerProjectGeneration(buildRequestId: string): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session?.access_token) {
+      throw new Error('Not authenticated')
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const response = await fetch(`${supabaseUrl}/functions/v1/generate-project`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        build_request_id: buildRequestId,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to start generation')
+    }
+
+    return true
+  } catch (error) {
+    console.error('Error triggering project generation:', error)
+    return false
   }
 }

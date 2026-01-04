@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../lib/auth'
 import { supabase } from '../lib/supabase'
-import { Globe, Zap, ShoppingCart, BarChart3, Cloud, Smartphone, Gamepad2, Sparkles, X, Clock, AlertTriangle, CreditCard, Loader2 } from 'lucide-react'
+import { Globe, Zap, ShoppingCart, BarChart3, Cloud, Smartphone, Gamepad2, Sparkles, X, Clock, AlertTriangle, CreditCard, Loader2, Rocket, Check } from 'lucide-react'
 import { GiphyPicker } from '../components/GiphyPicker'
-import { useSubmissionLimits, SUBMISSION_PACK_SIZES, createCheckoutSession } from '../lib/submissions'
+import { useSubmissionLimits, SUBMISSION_PACK_SIZES, PREMIUM_TIERS, createCheckoutSession, createPremiumCheckoutSession } from '../lib/submissions'
 import { useToast } from '../components/Toast'
 
 const CATEGORIES = [
@@ -25,7 +25,7 @@ export function SubmitPage() {
   const submissionLimits = useSubmissionLimits()
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [purchaseLoading, setPurchaseLoading] = useState<number | null>(null)
+  const [purchaseLoading, setPurchaseLoading] = useState<number | string | null>(null)
   const [showBuyModal, setShowBuyModal] = useState(false)
   const [step, setStep] = useState(1)
   const [formData, setFormData] = useState({
@@ -45,9 +45,14 @@ export function SubmitPage() {
   useEffect(() => {
     const success = searchParams.get('success')
     const cancelled = searchParams.get('cancelled')
+    const isPremium = searchParams.get('premium')
     
     if (success === 'true') {
-      showToast('Payment successful! Your extra submissions have been added.', 'success')
+      if (isPremium === 'true') {
+        showToast('Premium purchase successful! AI generation will start with your next submission.', 'success')
+      } else {
+        showToast('Payment successful! Your extra submissions have been added.', 'success')
+      }
       submissionLimits.refresh()
       // Clear the URL params
       window.history.replaceState({}, '', '/submit')
@@ -69,6 +74,23 @@ export function SubmitPage() {
       }
     } catch (error) {
       console.error('Purchase error:', error)
+      showToast('An error occurred. Please try again.', 'error')
+    } finally {
+      setPurchaseLoading(null)
+    }
+  }
+
+  const handlePremiumPurchase = async (tierId: 'pro_generate' | 'premium') => {
+    setPurchaseLoading(tierId)
+    try {
+      const url = await createPremiumCheckoutSession(tierId)
+      if (url) {
+        window.location.href = url
+      } else {
+        showToast('Failed to create checkout session. Please try again.', 'error')
+      }
+    } catch (error) {
+      console.error('Premium purchase error:', error)
       showToast('An error occurred. Please try again.', 'error')
     } finally {
       setPurchaseLoading(null)
@@ -548,8 +570,8 @@ export function SubmitPage() {
 
       {/* Buy More Submissions Modal */}
       {showBuyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-slate-900 rounded-2xl border border-slate-700 max-w-lg w-full p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 overflow-y-auto">
+          <div className="bg-slate-900 rounded-2xl border border-slate-700 max-w-4xl w-full p-6 my-8">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-white">Get More Submissions</h3>
               <button
@@ -560,50 +582,130 @@ export function SubmitPage() {
               </button>
             </div>
             
-            <p className="text-slate-400 mb-6">
-              Purchase additional submissions to share more of your ideas with the BuildLab community.
-            </p>
-            
-            <div className="space-y-3 mb-6">
-              {SUBMISSION_PACK_SIZES.map((pack) => (
-                <button
-                  key={pack.count}
-                  onClick={() => handlePurchase(pack.count)}
-                  disabled={purchaseLoading !== null}
-                  className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${
-                    pack.popular 
-                      ? 'bg-purple-500/10 border-purple-500' 
-                      : 'bg-slate-800 border-slate-700 hover:border-purple-500/50'
-                  } ${purchaseLoading !== null ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="flex items-center gap-3">
-                    {purchaseLoading === pack.count ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
-                    ) : (
-                      <div className="text-lg font-bold text-white">{pack.count}</div>
-                    )}
-                    <div className="text-slate-400">{pack.label}</div>
-                    {pack.popular && (
-                      <span className="px-2 py-0.5 bg-purple-500 text-white text-xs font-medium rounded-full">
-                        Best Value
+            {/* Premium Tiers */}
+            <div className="mb-8">
+              <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Rocket className="text-purple-400" size={20} />
+                Premium Packages
+                <span className="text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-0.5 rounded-full">
+                  Recommended
+                </span>
+              </h4>
+              <div className="grid md:grid-cols-2 gap-4">
+                {PREMIUM_TIERS.map((tier) => (
+                  <div
+                    key={tier.id}
+                    className={`relative p-6 rounded-xl border transition-all ${
+                      tier.popular 
+                        ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/10 border-purple-500 ring-2 ring-purple-500/20' 
+                        : 'bg-slate-800/50 border-slate-700'
+                    }`}
+                  >
+                    {tier.popular && (
+                      <span className="absolute -top-3 left-4 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-medium rounded-full">
+                        Most Popular
                       </span>
                     )}
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h5 className="text-xl font-bold text-white">{tier.name}</h5>
+                        <p className="text-slate-400 text-sm">{tier.submissions} premium submissions</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-3xl font-bold text-white">${tier.price}</div>
+                        <div className="text-slate-500 text-xs">one-time</div>
+                      </div>
+                    </div>
+                    
+                    <ul className="space-y-2 mb-6">
+                      {tier.features.map((feature, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <Check className="text-green-400 mt-0.5 flex-shrink-0" size={16} />
+                          <span className="text-slate-300">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    
+                    <button
+                      onClick={() => handlePremiumPurchase(tier.id as 'pro_generate' | 'premium')}
+                      disabled={purchaseLoading !== null}
+                      className={`w-full py-3 rounded-xl font-semibold transition-all ${
+                        tier.popular
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white hover:from-purple-400 hover:to-pink-500'
+                          : 'bg-slate-700 text-white hover:bg-slate-600'
+                      } ${purchaseLoading !== null ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {purchaseLoading === tier.id ? (
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                      ) : (
+                        <>Get {tier.name}</>
+                      )}
+                    </button>
                   </div>
-                  <div className="text-purple-400 font-semibold">${pack.price}</div>
-                </button>
-              ))}
+                ))}
+              </div>
+              
+              <div className="mt-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-cyan-500/20 rounded-lg flex-shrink-0">
+                    <Sparkles className="text-cyan-400" size={20} />
+                  </div>
+                  <div>
+                    <p className="text-white font-medium mb-1">What you get with Premium</p>
+                    <p className="text-slate-400 text-sm">
+                      Our AI automatically generates market research, business plans, technical specs, 
+                      and a <strong className="text-white">working prototype hosted on BuildLab</strong>. 
+                      You'll also get a <strong className="text-white">GitHub repository</strong> with the full codebase. 
+                      Share your prototype with anyone via a simple link!
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
             
-            <p className="text-slate-500 text-xs text-center mb-4">
-              Secure payment via Stripe • Submissions never expire
-            </p>
+            {/* Basic Packs */}
+            <div>
+              <h4 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-3">
+                Basic Submission Packs
+              </h4>
+              <div className="grid md:grid-cols-3 gap-3">
+                {SUBMISSION_PACK_SIZES.map((pack) => (
+                  <button
+                    key={pack.count}
+                    onClick={() => handlePurchase(pack.count)}
+                    disabled={purchaseLoading !== null}
+                    className={`flex items-center justify-between p-4 rounded-xl border transition-all bg-slate-800/50 border-slate-700 hover:border-slate-600 ${
+                      purchaseLoading !== null ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {purchaseLoading === pack.count ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                      ) : (
+                        <div className="text-lg font-bold text-white">{pack.count}</div>
+                      )}
+                      <div className="text-slate-400 text-sm">submissions</div>
+                    </div>
+                    <div className="text-slate-300 font-semibold">${pack.price}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-slate-500 text-xs mt-2">
+                Basic packs include submissions only (no AI generation)
+              </p>
+            </div>
             
-            <button
-              onClick={() => setShowBuyModal(false)}
-              className="w-full py-3 bg-slate-800 text-slate-400 rounded-xl hover:bg-slate-700 transition-colors"
-            >
-              Maybe Later
-            </button>
+            <div className="mt-6 pt-4 border-t border-slate-700/50 flex items-center justify-between">
+              <p className="text-slate-500 text-xs">
+                Secure payment via Stripe • Submissions never expire
+              </p>
+              <button
+                onClick={() => setShowBuyModal(false)}
+                className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+              >
+                Maybe Later
+              </button>
+            </div>
           </div>
         </div>
       )}

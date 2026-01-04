@@ -22,6 +22,12 @@ const PRICE_IDS: Record<number, string> = {
   10: 'price_1SlkAuKkfLbczEawJLVDg39F', // 10 submissions for $12
 }
 
+// Premium tier price IDs
+const PREMIUM_PRICE_IDS: Record<string, { priceId: string, submissions: number }> = {
+  'pro_generate': { priceId: 'price_pro_generate_placeholder', submissions: 5 },  // $29 - Pro Generate
+  'premium': { priceId: 'price_premium_placeholder', submissions: 10 },            // $99 - Premium
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -60,11 +66,23 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { pack_size, success_url, cancel_url } = await req.json()
+    const { pack_size, tier_id, is_premium, success_url, cancel_url } = await req.json()
     
-    // Validate pack size
-    if (!PRICE_IDS[pack_size]) {
-      return new Response(JSON.stringify({ error: 'Invalid pack size' }), {
+    let priceId: string
+    let packSize: number
+    let isPremiumPurchase = false
+
+    // Handle premium tier purchase
+    if (is_premium && tier_id && PREMIUM_PRICE_IDS[tier_id]) {
+      priceId = PREMIUM_PRICE_IDS[tier_id].priceId
+      packSize = PREMIUM_PRICE_IDS[tier_id].submissions
+      isPremiumPurchase = true
+    } else if (pack_size && PRICE_IDS[pack_size]) {
+      // Handle basic pack purchase
+      priceId = PRICE_IDS[pack_size]
+      packSize = pack_size
+    } else {
+      return new Response(JSON.stringify({ error: 'Invalid pack size or tier' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
@@ -102,7 +120,7 @@ Deno.serve(async (req) => {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: PRICE_IDS[pack_size],
+          price: priceId,
           quantity: 1,
         },
       ],
@@ -111,7 +129,9 @@ Deno.serve(async (req) => {
       cancel_url: cancel_url || 'https://buildlab.app/submit?cancelled=true',
       metadata: {
         user_id: user.id,
-        pack_size: pack_size.toString(),
+        pack_size: packSize.toString(),
+        is_premium: isPremiumPurchase.toString(),
+        tier_id: tier_id || '',
       },
     })
 
@@ -122,7 +142,8 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error creating checkout session:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

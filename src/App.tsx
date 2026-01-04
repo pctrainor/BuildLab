@@ -15,6 +15,7 @@ import { LeaderboardPage } from './pages/LeaderboardPage'
 import { CampaignsPage } from './pages/CampaignsPage'
 import { CreateCampaignPage } from './pages/CreateCampaignPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { GeneratedProjectPage } from './pages/GeneratedProjectPage'
 
 function App() {
   const { initialize, initialized } = useAuthStore()
@@ -51,6 +52,7 @@ function App() {
           <Route path="campaigns" element={<CampaignsPage />} />
           <Route path="campaigns/create" element={<CreateCampaignPage />} />
           <Route path="u/:username" element={<ProfilePage />} />
+          <Route path="project/:projectSlug" element={<GeneratedProjectPage />} />
           <Route path="competitions" element={<ExplorePage />} />
           <Route path="how-it-works" element={<HomePage />} />
           <Route path="profile" element={<DashboardPage />} />
