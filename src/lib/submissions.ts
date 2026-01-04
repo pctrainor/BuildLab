@@ -313,8 +313,22 @@ export async function createPremiumCheckoutSession(
   }
 }
 
+// Generation options for AI project generation
+export interface GenerationOptions {
+  marketResearch: boolean
+  projectCharter: boolean
+  prd: boolean
+  techSpec: boolean
+  codePrototype: boolean
+  customInstructions: string
+  focusArea: 'balanced' | 'budget' | 'speed' | 'quality' | 'mvp' | 'enterprise'
+}
+
 // Trigger AI project generation for a build request
-export async function triggerProjectGeneration(buildRequestId: string): Promise<boolean> {
+export async function triggerProjectGeneration(
+  buildRequestId: string, 
+  options?: GenerationOptions
+): Promise<boolean> {
   try {
     const { data: { session } } = await supabase.auth.getSession()
     
@@ -331,6 +345,7 @@ export async function triggerProjectGeneration(buildRequestId: string): Promise<
       },
       body: JSON.stringify({
         build_request_id: buildRequestId,
+        options: options,
       }),
     })
 

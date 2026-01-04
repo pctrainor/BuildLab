@@ -204,7 +204,33 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Verify auth token
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { 
+          status: 401, 
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } 
+        }
+      )
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    
+    // Verify the user token
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        { 
+          status: 401, 
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } 
+        }
+      )
+    }
     
     // Get request body with options
     const { build_request_id, options } = await req.json() as { 
