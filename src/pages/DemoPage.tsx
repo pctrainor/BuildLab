@@ -39,22 +39,38 @@ function generateLivePreviewHtml(codeFiles: Record<string, string>, title: strin
 
   // Clean the App code for browser execution
   function cleanCodeForBrowser(code: string): string {
-    return code
+    const cleaned = code
       // Remove import statements (we'll use globals)
       .replace(/^import\s+.*?from\s+['"][^'"]+['"];?\s*$/gm, '')
       .replace(/^import\s+['"][^'"]+['"];?\s*$/gm, '')
       // Remove export statements but keep the content
+      .replace(/^export\s+default\s+function\s+/gm, 'function ')
       .replace(/^export\s+default\s+/gm, 'const __DefaultExport__ = ')
+      .replace(/^export\s+function\s+/gm, 'function ')
+      .replace(/^export\s+const\s+/gm, 'const ')
       .replace(/^export\s+/gm, '')
-      // Convert TypeScript to JavaScript
-      .replace(/:\s*(React\.FC|FC|string|number|boolean|any|\w+\[\]|Record<[^>]+>)\s*(?=[=,)])/g, '')
-      .replace(/<[A-Z]\w*(?:\s+extends\s+[^>]+)?>/g, '') // Remove generics
-      .replace(/:\s*(React\.ReactNode|JSX\.Element|void)\s*(?=[{=])/g, '')
-      .replace(/interface\s+\w+\s*\{[^}]+\}/g, '') // Remove interfaces
-      .replace(/type\s+\w+\s*=\s*[^;]+;/g, '') // Remove type aliases
-      // Clean up any remaining TypeScript syntax
-      .replace(/as\s+\w+/g, '')
-      .replace(/\?\./g, '?.') // Keep optional chaining, it's valid JS
+      // Remove TypeScript interfaces and types (multiline support)
+      .replace(/interface\s+\w+\s*\{[\s\S]*?\n\}/gm, '')
+      .replace(/type\s+\w+\s*=\s*[^;]+;/gm, '') // Simple type aliases
+      // Remove type annotations from function components
+      .replace(/:\s*React\.FC(?:<[^>]*>)?/g, '')
+      .replace(/:\s*FC(?:<[^>]*>)?/g, '')
+      // Remove type annotations in parameters and variables
+      .replace(/(\w+)\s*:\s*(?:string|number|boolean|any|void|null|undefined)\b/g, '$1')
+      .replace(/(\w+)\s*:\s*\w+\[\]/g, '$1')
+      .replace(/(\w+)\s*:\s*Record<[^>]+>/g, '$1')
+      .replace(/(\w+)\s*:\s*React\.\w+/g, '$1')
+      .replace(/(\w+)\s*:\s*JSX\.Element/g, '$1')
+      // Remove generics like <T>, <string>, etc.
+      .replace(/<(?:string|number|boolean|any|T|K|V|unknown)(?:\s*,\s*(?:string|number|boolean|any|T|K|V|unknown))*>/g, '')
+      // Remove "as" type assertions
+      .replace(/\s+as\s+(?:const|string|number|boolean|any|\w+)/g, '')
+      // Remove return type annotations
+      .replace(/\)\s*:\s*(?:React\.ReactNode|JSX\.Element|void|string|number|boolean|any|null)\s*(?=[{=])/g, ') ')
+      // Keep optional chaining (valid JS)
+      .replace(/\?\./g, '?.')
+    
+    return cleaned
   }
 
   const cleanedApp = cleanCodeForBrowser(appTsx)
@@ -312,6 +328,7 @@ export function DemoPage() {
     const loadProject = async () => {
       if (!projectSlug) return
 
+      // First try to find the project - use maybeSingle() to avoid 406 error on empty result
       const { data, error } = await supabase
         .from('generated_projects')
         .select(`
@@ -322,7 +339,7 @@ export function DemoPage() {
           build_request:build_requests(title, short_description)
         `)
         .eq('project_slug', projectSlug)
-        .single()
+        .maybeSingle()
 
       if (error) {
         console.error('Error loading project:', error)
@@ -330,15 +347,24 @@ export function DemoPage() {
         return
       }
 
+      if (!data) {
+        console.error('Project not found:', projectSlug)
+        setLoading(false)
+        return
+      }
+
       setProject(data as GeneratedProject)
       
       // Generate the iframe content from code_files
-      if (data?.code_files) {
+      if (data?.code_files && Object.keys(data.code_files).length > 0) {
+        console.log('Demo: Generating preview with files:', Object.keys(data.code_files))
         const html = generateLivePreviewHtml(
           data.code_files as Record<string, string>, 
           data.build_request?.title || 'Demo'
         )
         setIframeContent(html)
+      } else {
+        console.warn('Demo: No code files available in project', data)
       }
       
       setLoading(false)
