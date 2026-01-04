@@ -28,24 +28,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      console.log('Auth: Initializing...')
       
-      if (session?.user) {
-        set({ user: session.user, session })
-        await get().fetchProfile()
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Auth init timeout')), 5000)
+      )
+      
+      try {
+        const sessionPromise = supabase.auth.getSession()
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
+        
+        console.log('Auth: Got session', !!session)
+        
+        if (session?.user) {
+          set({ user: session.user, session })
+          // Don't await profile fetch - let it happen in background
+          get().fetchProfile().catch(e => console.warn('Profile fetch failed:', e))
+        }
+      } catch (e) {
+        console.warn('Auth: Session retrieval failed or timed out:', e)
       }
       
       // Listen for auth changes
       supabase.auth.onAuthStateChange(async (_event, session) => {
+        console.log('Auth: State changed', _event, !!session)
         set({ user: session?.user ?? null, session })
         
         if (session?.user) {
-          await get().fetchProfile()
+          // Don't block on profile fetch - do it in background
+          get().fetchProfile().catch(e => console.warn('Auth: Background profile fetch failed:', e))
         } else {
           set({ profile: null })
         }
       })
     } finally {
+      console.log('Auth: Initialized')
       set({ initialized: true })
     }
   },
@@ -125,14 +143,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signIn: async (email: string, password: string) => {
     set({ loading: true })
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log('Auth: Signing in with email:', email)
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       })
       
-      if (error) return { error }
+      if (error) {
+        console.error('Auth: Sign in error:', error.message)
+        return { error }
+      }
+      
+      console.log('Auth: Sign in successful, user:', data.user?.id)
       return { error: null }
     } catch (error) {
+      console.error('Auth: Unexpected sign in error:', error)
       return { error: error as Error }
     } finally {
       set({ loading: false })
@@ -170,14 +195,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { user } = get()
     if (!user) return
 
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
+    try {
+      console.log('Auth: Fetching profile for user', user.id)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
 
-    if (data) {
-      set({ profile: data })
+      if (error) {
+        console.warn('Auth: Profile fetch error:', error.message)
+        // If profile doesn't exist, that's okay - user may need to complete onboarding
+        return
+      }
+
+      if (data) {
+        console.log('Auth: Profile loaded:', data.username)
+        set({ profile: data })
+      }
+    } catch (e) {
+      console.error('Auth: Unexpected error fetching profile:', e)
     }
   }
 }))

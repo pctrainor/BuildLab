@@ -1,0 +1,225 @@
+{
+  "Comment": "BuildLab Project Generation Workflow - Orchestrates multi-agent AI generation",
+  "StartAt": "ValidateInput",
+  "States": {
+    "ValidateInput": {
+      "Type": "Pass",
+      "Comment": "Validate and prepare job data",
+      "Next": "UpdateStatusProcessing"
+    },
+    
+    "UpdateStatusProcessing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "buildlab-jobs",
+        "Key": {
+          "job_id": { "S.$": "$.build_request_id" }
+        },
+        "UpdateExpression": "SET #status = :status, #started = :started",
+        "ExpressionAttributeNames": {
+          "#status": "status",
+          "#started": "started_at"
+        },
+        "ExpressionAttributeValues": {
+          ":status": { "S": "processing" },
+          ":started": { "S.$": "$$.State.EnteredTime" }
+        }
+      },
+      "ResultPath": null,
+      "Next": "GenerateDocuments"
+    },
+    
+    "GenerateDocuments": {
+      "Type": "Parallel",
+      "Comment": "Generate documents in parallel for speed",
+      "Branches": [
+        {
+          "StartAt": "GenerateMarketResearch",
+          "States": {
+            "GenerateMarketResearch": {
+              "Type": "Task",
+              "Resource": "${GenerateDocsLambdaArn}",
+              "Parameters": {
+                "job.$": "$",
+                "document_type": "market_research"
+              },
+              "ResultPath": "$.market_research",
+              "Retry": [
+                {
+                  "ErrorEquals": ["States.TaskFailed"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "GenerateProjectCharter",
+          "States": {
+            "GenerateProjectCharter": {
+              "Type": "Task",
+              "Resource": "${GenerateDocsLambdaArn}",
+              "Parameters": {
+                "job.$": "$",
+                "document_type": "project_charter"
+              },
+              "ResultPath": "$.project_charter",
+              "Retry": [
+                {
+                  "ErrorEquals": ["States.TaskFailed"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.parallel_docs",
+      "Next": "GeneratePRD"
+    },
+    
+    "GeneratePRD": {
+      "Type": "Task",
+      "Resource": "${GenerateDocsLambdaArn}",
+      "Comment": "PRD needs market research context",
+      "Parameters": {
+        "job.$": "$",
+        "document_type": "prd",
+        "context": {
+          "market_research.$": "$.parallel_docs[0].market_research"
+        }
+      },
+      "ResultPath": "$.prd",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "GenerateTechSpec"
+    },
+    
+    "GenerateTechSpec": {
+      "Type": "Task",
+      "Resource": "${GenerateDocsLambdaArn}",
+      "Comment": "Tech spec needs PRD context",
+      "Parameters": {
+        "job.$": "$",
+        "document_type": "tech_spec",
+        "context": {
+          "prd.$": "$.prd"
+        }
+      },
+      "ResultPath": "$.tech_spec",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "SaveDocuments"
+    },
+    
+    "SaveDocuments": {
+      "Type": "Task",
+      "Resource": "${SaveToSupabaseLambdaArn}",
+      "Comment": "Save generated documents to Supabase",
+      "Parameters": {
+        "build_request_id.$": "$.build_request_id",
+        "documents": {
+          "market_research.$": "$.parallel_docs[0].market_research",
+          "project_charter.$": "$.parallel_docs[1].project_charter",
+          "prd.$": "$.prd",
+          "tech_spec.$": "$.tech_spec"
+        }
+      },
+      "ResultPath": "$.save_result",
+      "Next": "CheckCodeGeneration"
+    },
+    
+    "CheckCodeGeneration": {
+      "Type": "Choice",
+      "Comment": "Check if code generation was requested",
+      "Choices": [
+        {
+          "Variable": "$.options.codePrototype",
+          "BooleanEquals": true,
+          "Next": "GenerateCode"
+        }
+      ],
+      "Default": "UpdateStatusCompleted"
+    },
+    
+    "GenerateCode": {
+      "Type": "Task",
+      "Resource": "${GenerateCodeLambdaArn}",
+      "Comment": "Generate full React/TypeScript application",
+      "Parameters": {
+        "build_request_id.$": "$.build_request_id",
+        "project_slug.$": "$.project_slug",
+        "title.$": "$.title",
+        "description.$": "$.description",
+        "short_description.$": "$.short_description",
+        "category.$": "$.category",
+        "target_audience.$": "$.target_audience",
+        "features.$": "$.features",
+        "prd.$": "$.prd",
+        "tech_spec.$": "$.tech_spec",
+        "user_id.$": "$.user_id",
+        "github_token.$": "$.github_token"
+      },
+      "ResultPath": "$.code_result",
+      "TimeoutSeconds": 900,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.code_error",
+          "Next": "HandleCodeGenError"
+        }
+      ],
+      "Next": "UpdateStatusCompleted"
+    },
+    
+    "HandleCodeGenError": {
+      "Type": "Pass",
+      "Comment": "Handle code generation error gracefully",
+      "Result": {
+        "code_generation": "failed",
+        "message": "Code generation failed but documents are available"
+      },
+      "ResultPath": "$.code_result",
+      "Next": "UpdateStatusCompleted"
+    },
+    
+    "UpdateStatusCompleted": {
+      "Type": "Task",
+      "Resource": "${UpdateStatusLambdaArn}",
+      "Parameters": {
+        "build_request_id.$": "$.build_request_id",
+        "status": "completed",
+        "preview_url.$": "$.code_result.preview_url",
+        "github_url.$": "$.code_result.github_url"
+      },
+      "End": true
+    }
+  }
+}

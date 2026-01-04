@@ -12,10 +12,12 @@ import { SubmitPage } from './pages/SubmitPage'
 import { RequestDetailPage } from './pages/RequestDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { CompetePage } from './pages/CompetePage'
 import { CampaignsPage } from './pages/CampaignsPage'
 import { CreateCampaignPage } from './pages/CreateCampaignPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { GeneratedProjectPage } from './pages/GeneratedProjectPage'
+import { DemoPage } from './pages/DemoPage'
 
 function App() {
   const { initialize, initialized } = useAuthStore()
@@ -42,6 +44,7 @@ function App() {
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/check-email" element={<CheckEmailPage />} />
         <Route path="/email-confirmed" element={<EmailConfirmedPage />} />
+        <Route path="/demo/:projectSlug" element={<DemoPage />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<HomePage />} />
           <Route path="explore" element={<ExplorePage />} />
@@ -53,7 +56,7 @@ function App() {
           <Route path="campaigns/create" element={<CreateCampaignPage />} />
           <Route path="u/:username" element={<ProfilePage />} />
           <Route path="project/:projectSlug" element={<GeneratedProjectPage />} />
-          <Route path="competitions" element={<ExplorePage />} />
+          <Route path="competitions" element={<CompetePage />} />
           <Route path="how-it-works" element={<HomePage />} />
           <Route path="profile" element={<DashboardPage />} />
         </Route>

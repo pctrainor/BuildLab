@@ -17,19 +17,21 @@ import {
   Cpu,
   Share2,
   Copy,
-  Check
+  Check,
+  Sparkles
 } from 'lucide-react'
 import { useToast } from '../components/Toast'
 import Markdown from 'react-markdown'
 
 interface GeneratedProject {
   id: string
+  build_request_id: string
   project_slug: string
   market_research: string | null
   project_charter: string | null
   prd: string | null
   tech_spec: string | null
-  code_files: Record<string, string> | null | unknown
+  code_files: Record<string, string> | null
   preview_url: string | null
   github_url: string | null
   status: 'pending' | 'processing' | 'completed' | 'failed'
@@ -42,6 +44,7 @@ interface GeneratedProject {
 }
 
 type TabType = 'overview' | 'research' | 'charter' | 'prd' | 'tech' | 'code'
+type SectionType = 'marketResearch' | 'projectCharter' | 'prd' | 'techSpec' | 'codePrototype'
 
 export function GeneratedProjectPage() {
   const { projectSlug } = useParams()
@@ -52,6 +55,7 @@ export function GeneratedProjectPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [copied, setCopied] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [generatingSection, setGeneratingSection] = useState<SectionType | null>(null)
 
   useEffect(() => {
     const loadProjectData = async () => {
@@ -61,7 +65,7 @@ export function GeneratedProjectPage() {
         .from('generated_projects')
         .select(`
           *,
-          build_request:build_requests(title, short_description, category)
+          build_request:build_requests(id, title, short_description, category)
         `)
         .eq('project_slug', projectSlug)
         .single()
@@ -69,7 +73,12 @@ export function GeneratedProjectPage() {
       if (error) {
         console.error('Error loading project:', error)
       } else if (data) {
-        setProject(data as unknown as GeneratedProject)
+        // Extract build_request_id from the nested build_request
+        const projectData = {
+          ...data,
+          build_request_id: data.build_request?.id || data.build_request_id,
+        }
+        setProject(projectData as unknown as GeneratedProject)
       }
       setLoading(false)
     }
@@ -82,6 +91,127 @@ export function GeneratedProjectPage() {
     setCopied(true)
     showToast('Link copied to clipboard!', 'success')
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const downloadCode = () => {
+    if (!project?.code_files) {
+      showToast('No code files to download', 'error')
+      return
+    }
+    
+    const codeFiles = project.code_files as Record<string, string>
+    const projectName = project.build_request?.title?.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() || 'project'
+    
+    // Create a formatted download with instructions
+    const downloadData = {
+      projectName,
+      generatedAt: project.generated_at,
+      instructions: "To use this code: 1) Create a new folder, 2) Create each file with its content, 3) Run 'npm install' then 'npm run dev'",
+      files: codeFiles
+    }
+    
+    const blob = new Blob([JSON.stringify(downloadData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${projectName}-code.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    showToast('Code files downloaded!', 'success')
+  }
+
+  const generateSection = async (section: SectionType) => {
+    if (!project?.build_request_id) {
+      showToast('Cannot generate: missing project reference', 'error')
+      return
+    }
+    
+    setGeneratingSection(section)
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.access_token) {
+        showToast('Session expired. Please log out and log back in.', 'error')
+        setGeneratingSection(null)
+        return
+      }
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-project`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ 
+            build_request_id: project.build_request_id,
+            options: {
+              generateOnly: section,
+            }
+          }),
+        }
+      )
+
+      if (!response.ok) throw new Error('Generation failed')
+      
+      const sectionNames: Record<SectionType, string> = {
+        marketResearch: 'Market Research',
+        projectCharter: 'Project Charter',
+        prd: 'PRD',
+        techSpec: 'Tech Spec',
+        codePrototype: 'Code Prototype',
+      }
+      
+      showToast(`${sectionNames[section]} generation started! This may take a minute.`, 'success')
+      
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        if (!projectSlug) return
+        const { data } = await supabase
+          .from('generated_projects')
+          .select('*')
+          .eq('project_slug', projectSlug)
+          .single()
+        
+        if (data) {
+          // Check if the specific section is now populated
+          const sectionFieldMap: Record<SectionType, string> = {
+            marketResearch: 'market_research',
+            projectCharter: 'project_charter',
+            prd: 'prd',
+            techSpec: 'tech_spec',
+            codePrototype: 'code_files',
+          }
+          const field = sectionFieldMap[section]
+          const value = data[field as keyof typeof data]
+          
+          if (value && (typeof value === 'string' ? value.length > 0 : Object.keys(value as object).length > 0)) {
+            clearInterval(pollInterval)
+            setGeneratingSection(null)
+            setProject(prev => prev ? { ...prev, ...data } as GeneratedProject : null)
+            showToast(`${sectionNames[section]} generated successfully!`, 'success')
+          }
+        }
+      }, 3000)
+      
+      // Timeout after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        if (generatingSection === section) {
+          setGeneratingSection(null)
+          showToast('Generation is taking longer than expected. Please refresh the page.', 'error')
+        }
+      }, 120000)
+
+    } catch {
+      showToast('Failed to start generation', 'error')
+      setGeneratingSection(null)
+    }
   }
 
   const startGeneration = async () => {
@@ -205,16 +335,15 @@ export function GeneratedProjectPage() {
               <span>{copied ? 'Copied!' : 'Share'}</span>
             </button>
             
-            {project.preview_url && (
-              <a
-                href={project.preview_url}
-                target="_blank"
-                rel="noopener noreferrer"
+            {/* Live Preview - links to our internal demo page */}
+            {project.code_files && Object.keys(project.code_files).length > 0 && (
+              <Link
+                to={`/demo/${project.project_slug}`}
                 className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors border border-cyan-500/30"
               >
                 <ExternalLink size={18} />
                 <span>Live Preview</span>
-              </a>
+              </Link>
             )}
             
             {project.github_url && (
@@ -227,6 +356,17 @@ export function GeneratedProjectPage() {
                 <Github size={18} />
                 <span>GitHub Repo</span>
               </a>
+            )}
+
+            {/* Download Code button - shows when code files exist */}
+            {project.code_files && typeof project.code_files === 'object' && Object.keys(project.code_files as Record<string, string>).length > 0 && (
+              <button
+                onClick={downloadCode}
+                className="flex items-center gap-2 px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors border border-green-500/30"
+              >
+                <Download size={18} />
+                <span>Download Code</span>
+              </button>
             )}
 
             {project.status === 'pending' && user && (
@@ -321,7 +461,8 @@ export function GeneratedProjectPage() {
               </div>
             </div>
 
-            {project.preview_url && (
+            {/* Live Preview - use internal demo page */}
+            {project.code_files && Object.keys(project.code_files).length > 0 && (
               <div className="mt-8">
                 <h3 className="text-xl font-semibold text-white mb-4">Live Preview</h3>
                 <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
@@ -331,13 +472,22 @@ export function GeneratedProjectPage() {
                       <div className="w-3 h-3 rounded-full bg-yellow-500" />
                       <div className="w-3 h-3 rounded-full bg-green-500" />
                     </div>
-                    <span className="text-slate-400 text-sm ml-2">{project.preview_url}</span>
+                    <span className="text-slate-400 text-sm ml-2">buildlab.dev/demo/{project.project_slug}</span>
                   </div>
-                  <iframe 
-                    src={project.preview_url}
-                    className="w-full h-[500px] bg-white"
-                    title="Project Preview"
-                  />
+                  <div className="w-full h-[500px] bg-slate-900 flex items-center justify-center">
+                    <Link
+                      to={`/demo/${project.project_slug}`}
+                      className="flex flex-col items-center gap-4 text-center p-8"
+                    >
+                      <div className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <ExternalLink className="w-8 h-8 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-white font-semibold text-lg">Open Live Preview</p>
+                        <p className="text-slate-400 text-sm mt-1">View your generated project in action</p>
+                      </div>
+                    </Link>
+                  </div>
                 </div>
               </div>
             )}
@@ -355,7 +505,26 @@ export function GeneratedProjectPage() {
                 {project.market_research}
               </Markdown></div>
             ) : (
-              <p className="text-slate-500">Market research not yet generated.</p>
+              <div className="text-center py-8">
+                <p className="text-slate-500 mb-4">Market research not yet generated.</p>
+                <button
+                  onClick={() => generateSection('marketResearch')}
+                  disabled={generatingSection !== null}
+                  className="flex items-center gap-2 px-4 py-2 mx-auto bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50"
+                >
+                  {generatingSection === 'marketResearch' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      <span>Generate Market Research</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -371,7 +540,26 @@ export function GeneratedProjectPage() {
                 {project.project_charter}
               </Markdown></div>
             ) : (
-              <p className="text-slate-500">Project charter not yet generated.</p>
+              <div className="text-center py-8">
+                <p className="text-slate-500 mb-4">Project charter not yet generated.</p>
+                <button
+                  onClick={() => generateSection('projectCharter')}
+                  disabled={generatingSection !== null}
+                  className="flex items-center gap-2 px-4 py-2 mx-auto bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50"
+                >
+                  {generatingSection === 'projectCharter' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      <span>Generate Project Charter</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -387,7 +575,26 @@ export function GeneratedProjectPage() {
                 {project.prd}
               </Markdown></div>
             ) : (
-              <p className="text-slate-500">PRD not yet generated.</p>
+              <div className="text-center py-8">
+                <p className="text-slate-500 mb-4">PRD not yet generated.</p>
+                <button
+                  onClick={() => generateSection('prd')}
+                  disabled={generatingSection !== null}
+                  className="flex items-center gap-2 px-4 py-2 mx-auto bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50"
+                >
+                  {generatingSection === 'prd' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      <span>Generate PRD</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -403,7 +610,26 @@ export function GeneratedProjectPage() {
                 {project.tech_spec}
               </Markdown></div>
             ) : (
-              <p className="text-slate-500">Technical spec not yet generated.</p>
+              <div className="text-center py-8">
+                <p className="text-slate-500 mb-4">Technical spec not yet generated.</p>
+                <button
+                  onClick={() => generateSection('techSpec')}
+                  disabled={generatingSection !== null}
+                  className="flex items-center gap-2 px-4 py-2 mx-auto bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50"
+                >
+                  {generatingSection === 'techSpec' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      <span>Generate Tech Spec</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -451,7 +677,26 @@ export function GeneratedProjectPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-slate-500">Code not yet generated.</p>
+              <div className="text-center py-8">
+                <p className="text-slate-500 mb-4">Code not yet generated.</p>
+                <button
+                  onClick={() => generateSection('codePrototype')}
+                  disabled={generatingSection !== null}
+                  className="flex items-center gap-2 px-4 py-2 mx-auto bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-lg hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50"
+                >
+                  {generatingSection === 'codePrototype' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Generating Code...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      <span>Generate Code Prototype</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}

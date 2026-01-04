@@ -8,13 +8,37 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 const openaiKey = Deno.env.get('OPENAI_API_KEY')!
-const githubToken = Deno.env.get('GITHUB_TOKEN')!
+const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://buildlab.dev'
 
 // AWS Configuration
 const awsAccessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID')!
 const awsSecretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY')!
 const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1'
 const s3Bucket = 'buildlab-previews'
+
+// Production CORS - restrict to known origins
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigins = [
+    frontendUrl,
+    'https://buildlab.dev',
+    'https://www.buildlab.dev',
+    // Always allow localhost for development
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:3000',
+    // Allow Vercel preview deployments
+    ...(frontendUrl.includes('vercel.app') ? [frontendUrl] : []),
+  ]
+  
+  // If origin is in allowedOrigins, use it. Otherwise fall back to first allowed.
+  const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
+  
+  return {
+    'Access-Control-Allow-Origin': corsOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, x-supabase-api-version',
+  }
+}
 
 interface ProjectRequest {
   build_request_id: string
@@ -34,6 +58,7 @@ interface GenerationOptions {
   codePrototype: boolean
   customInstructions: string
   focusArea: string
+  generateOnly?: 'marketResearch' | 'projectCharter' | 'prd' | 'techSpec' | 'codePrototype' | null
 }
 
 interface GeneratedProject {
@@ -55,6 +80,145 @@ const FOCUS_MODIFIERS: Record<string, string> = {
   mvp: 'Keep it minimal - only essential features for a proof of concept. Suggest what to cut.',
   enterprise: 'Design for enterprise-grade: high availability, security compliance, audit logging, scalability.',
 }
+
+// =============================================================================
+// PROMPT SAFETY & INJECTION PROTECTION
+// =============================================================================
+
+// Patterns that indicate prompt injection attempts
+const INJECTION_PATTERNS = [
+  /ignore\s+(previous|above|all)\s+(instructions?|prompts?)/i,
+  /disregard\s+(previous|above|all)/i,
+  /forget\s+(everything|all|previous)/i,
+  /you\s+are\s+now\s+/i,
+  /new\s+instructions?:/i,
+  /system\s*:\s*/i,
+  /\[SYSTEM\]/i,
+  /\[INST\]/i,
+  /<<SYS>>/i,
+  /<\|im_start\|>/i,
+  /assistant\s*:\s*/i,
+  /human\s*:\s*/i,
+  /user\s*:\s*/i,
+  /pretend\s+(you|to\s+be)/i,
+  /act\s+as\s+if/i,
+  /roleplay\s+as/i,
+  /jailbreak/i,
+  /bypass\s+(safety|filter|restriction)/i,
+  /do\s+anything\s+now/i,
+  /dan\s+mode/i,
+  /developer\s+mode/i,
+  /output\s+(the|your)\s+(system|initial)\s+prompt/i,
+  /what\s+(is|are)\s+your\s+instructions/i,
+  /reveal\s+your\s+(prompt|instructions)/i,
+]
+
+// Content that should never appear in project descriptions
+const FORBIDDEN_CONTENT = [
+  /\b(hack|exploit|malware|ransomware|phishing|ddos|botnet)\b/i,
+  /\b(illegal|illicit|criminal|fraud)\b/i,
+  /\b(weapon|bomb|explosive|drug\s+dealing)\b/i,
+  /\b(child|minor).*(abuse|porn|exploit)/i,
+  /\b(hate\s+speech|terrorism|extremis)/i,
+]
+
+// Sanitize user input to prevent injection
+function sanitizeInput(input: string): string {
+  if (!input) return ''
+  
+  // Remove potential control characters
+  let sanitized = input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+  
+  // Escape markdown that could be used to confuse the model
+  sanitized = sanitized.replace(/```/g, '\\`\\`\\`')
+  
+  // Limit length to prevent token exhaustion
+  if (sanitized.length > 5000) {
+    sanitized = sanitized.substring(0, 5000) + '...[truncated]'
+  }
+  
+  return sanitized.trim()
+}
+
+// Check for prompt injection attempts
+function detectInjection(text: string): { safe: boolean; reason?: string } {
+  const lowerText = text.toLowerCase()
+  
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(text)) {
+      console.warn('⚠️ Prompt injection detected:', pattern.toString())
+      return { safe: false, reason: 'Potential prompt injection detected' }
+    }
+  }
+  
+  for (const pattern of FORBIDDEN_CONTENT) {
+    if (pattern.test(text)) {
+      console.warn('⚠️ Forbidden content detected:', pattern.toString())
+      return { safe: false, reason: 'Content violates usage policy' }
+    }
+  }
+  
+  return { safe: true }
+}
+
+// Validate and clean project request data
+function validateProjectRequest(data: {
+  title?: string
+  description?: string
+  short_description?: string
+  target_audience?: string
+  features?: string[]
+  customInstructions?: string
+}): { valid: boolean; error?: string; sanitized: typeof data } {
+  const fields = [
+    { name: 'title', value: data.title },
+    { name: 'description', value: data.description },
+    { name: 'short_description', value: data.short_description },
+    { name: 'target_audience', value: data.target_audience },
+    { name: 'customInstructions', value: data.customInstructions },
+  ]
+  
+  // Check each field for injection
+  for (const field of fields) {
+    if (field.value) {
+      const check = detectInjection(field.value)
+      if (!check.safe) {
+        return { 
+          valid: false, 
+          error: `${field.name}: ${check.reason}`,
+          sanitized: data 
+        }
+      }
+    }
+  }
+  
+  // Check features array
+  if (data.features) {
+    for (const feature of data.features) {
+      const check = detectInjection(feature)
+      if (!check.safe) {
+        return { valid: false, error: `Feature: ${check.reason}`, sanitized: data }
+      }
+    }
+  }
+  
+  // Return sanitized data
+  return {
+    valid: true,
+    sanitized: {
+      title: sanitizeInput(data.title || ''),
+      description: sanitizeInput(data.description || ''),
+      short_description: sanitizeInput(data.short_description || ''),
+      target_audience: sanitizeInput(data.target_audience || ''),
+      features: data.features?.map(f => sanitizeInput(f)) || [],
+      customInstructions: sanitizeInput(data.customInstructions || ''),
+    }
+  }
+}
+
+// =============================================================================
+// AGENT PROMPTS
+// =============================================================================
 
 // Agent prompts for specialized tasks
 const AGENT_PROMPTS = {
@@ -235,12 +399,54 @@ Requirements:
 - Use Lucide React for icons
 - Make it visually impressive
 
-Return a JSON object with file paths as keys and file contents as values.
-Include: package.json, index.html, src/main.tsx, src/App.tsx, src/index.css, and all component files.`
+CRITICAL: You MUST return ONLY a valid JSON object with no markdown code fences, no explanation, no text before or after.
+The JSON must have file paths as keys and file contents as strings.
+Required files: package.json, index.html, src/main.tsx, src/App.tsx, src/index.css.
+Add component files as needed in src/components/.
+
+Example structure (your response must start with { and end with }):
+{"package.json": "...", "index.html": "...", "src/main.tsx": "...", "src/App.tsx": "...", "src/index.css": "..."}`,
+
+  // Planner prompt for multi-step code generation
+  code_planner: `You are a Senior Software Architect. Analyze the project requirements and create a file structure plan.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "files": [
+    {"path": "package.json", "description": "NPM configuration", "priority": 1},
+    {"path": "index.html", "description": "HTML entry point", "priority": 1},
+    {"path": "src/main.tsx", "description": "React entry", "priority": 1},
+    {"path": "src/App.tsx", "description": "Main app component", "priority": 1},
+    {"path": "src/index.css", "description": "Global styles", "priority": 1},
+    ...additional component files...
+  ],
+  "dependencies": ["react", "react-dom", "tailwindcss", ...],
+  "componentHierarchy": "Brief description of component structure"
+}
+
+Keep it focused - 8-15 files maximum for an MVP. Prioritize core functionality.`,
+
+  // Single file generator prompt
+  file_generator: `You are an Expert Full-Stack Developer. Generate the content for a SINGLE file.
+
+Requirements:
+- React 18 with TypeScript
+- Tailwind CSS (dark theme, modern gradients, shadows)
+- Lucide React for icons
+- Realistic mock data
+- Professional, production-ready code
+
+Return ONLY the raw file content. No markdown, no explanation, no code fences.
+For JSON files like package.json, return valid JSON.
+For TypeScript/TSX files, return valid TypeScript.
+For CSS files, return valid CSS with Tailwind directives.`
 }
 
 // Call OpenAI API
 async function callAgent(systemPrompt: string, userPrompt: string, isJson = false): Promise<string> {
+  // Use higher token limit for code generation
+  const maxTokens = isJson ? 16000 : 4000
+  
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -253,14 +459,304 @@ async function callAgent(systemPrompt: string, userPrompt: string, isJson = fals
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.7,
-      max_tokens: 4000,
+      temperature: isJson ? 0.3 : 0.7, // Lower temperature for JSON to reduce creativity/errors
+      max_tokens: maxTokens,
       ...(isJson && { response_format: { type: 'json_object' } })
     }),
   })
 
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('OpenAI API error:', response.status, errorText)
+    throw new Error(`OpenAI API error: ${response.status}`)
+  }
+
   const data = await response.json()
+  
+  if (!data.choices?.[0]?.message?.content) {
+    console.error('Invalid OpenAI response:', JSON.stringify(data))
+    throw new Error('Invalid response from OpenAI')
+  }
+  
   return data.choices[0].message.content
+}
+
+// Retry wrapper with exponential backoff
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelay = 1000
+): Promise<T> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error as Error
+      console.warn(`⚠️ Attempt ${attempt}/${maxAttempts} failed:`, lastError.message)
+      
+      if (attempt < maxAttempts) {
+        const delay = baseDelay * Math.pow(2, attempt - 1)
+        console.log(`   Retrying in ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  
+  throw lastError
+}
+
+// Multi-step code generation for better reliability
+async function generateCodeMultiStep(
+  projectContext: string,
+  prd: string,
+  techSpec: string
+): Promise<Record<string, string>> {
+  console.log('🏗️ Starting multi-step code generation...')
+  
+  // Step 1: Plan the file structure
+  const planPrompt = `
+Project: ${projectContext.substring(0, 1500)}
+
+${prd ? `PRD Summary:\n${prd.substring(0, 1000)}` : ''}
+${techSpec ? `Tech Stack:\n${techSpec.substring(0, 1000)}` : ''}
+
+Create a file structure plan for this React MVP.
+`.trim()
+
+  let plan: { files: Array<{ path: string; description: string }> }
+  
+  try {
+    const planResponse = await withRetry(
+      () => callAgent(AGENT_PROMPTS.code_planner, planPrompt, true),
+      2, // 2 attempts for planning
+      500
+    )
+    
+    let cleanedPlan = planResponse.trim()
+    if (cleanedPlan.startsWith('```')) {
+      cleanedPlan = cleanedPlan.replace(/^```json?\n?/, '').replace(/\n?```$/, '')
+    }
+    
+    plan = JSON.parse(cleanedPlan)
+    console.log(`📋 Planned ${plan.files.length} files`)
+  } catch (e) {
+    console.warn('⚠️ Planning failed, using default structure')
+    // Fallback to standard structure
+    plan = {
+      files: [
+        { path: 'package.json', description: 'NPM package configuration' },
+        { path: 'index.html', description: 'HTML entry point with Vite scripts' },
+        { path: 'src/main.tsx', description: 'React DOM entry point' },
+        { path: 'src/App.tsx', description: 'Main application component with routing and layout' },
+        { path: 'src/index.css', description: 'Tailwind CSS imports and global styles' },
+        { path: 'src/components/Layout.tsx', description: 'Main layout with navigation' },
+        { path: 'src/components/Dashboard.tsx', description: 'Main dashboard view' },
+      ]
+    }
+  }
+
+  // Step 2: Generate each file individually
+  const codeFiles: Record<string, string> = {}
+  const generatedContext: string[] = [] // Track what's been generated for context
+  
+  for (const file of plan.files) {
+    console.log(`  📝 Generating ${file.path}...`)
+    
+    const filePrompt = `
+PROJECT CONTEXT:
+${projectContext.substring(0, 800)}
+
+FILE TO GENERATE: ${file.path}
+PURPOSE: ${file.description}
+
+${generatedContext.length > 0 ? `ALREADY GENERATED FILES (for import/reference):
+${generatedContext.slice(-3).join('\n\n')}` : ''}
+
+${file.path === 'package.json' ? `
+Include these dependencies:
+- react, react-dom (^18.2.0)
+- react-router-dom (^6.20.0)
+- lucide-react (^0.294.0)
+- tailwindcss, postcss, autoprefixer (for styling)
+- @types/react, @types/react-dom, typescript, vite (dev deps)
+Use "type": "module" and proper Vite scripts.
+` : ''}
+
+${file.path === 'index.html' ? `
+Create a Vite-compatible HTML file with:
+- Dark background (#0a0a0a)
+- Script src="/src/main.tsx" type="module"
+- Proper meta tags and title
+` : ''}
+
+${file.path.endsWith('.tsx') ? `
+Create a complete, working TypeScript React component.
+Use Tailwind CSS classes for styling (dark theme with zinc/slate colors, gradients).
+Import icons from lucide-react as needed.
+Include realistic mock data.
+` : ''}
+
+${file.path === 'src/index.css' ? `
+Include Tailwind directives (@tailwind base, components, utilities).
+Add custom dark theme utilities if needed.
+` : ''}
+
+Generate ONLY the file content. No markdown fences, no explanation.
+`.trim()
+
+    try {
+      const content = await withRetry(
+        () => callAgent(AGENT_PROMPTS.file_generator, filePrompt, false),
+        2, // 2 retries per file
+        1000
+      )
+      
+      // Clean up any accidental markdown fences
+      let cleanContent = content.trim()
+      if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\w*\n?/, '').replace(/\n?```$/, '')
+      }
+      
+      // For JSON files, validate it's proper JSON
+      if (file.path.endsWith('.json')) {
+        try {
+          JSON.parse(cleanContent)
+        } catch {
+          console.warn(`⚠️ Invalid JSON in ${file.path}, attempting to fix...`)
+          // Try to extract JSON from response
+          const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            cleanContent = jsonMatch[0]
+          }
+        }
+      }
+      
+      codeFiles[file.path] = cleanContent
+      generatedContext.push(`// ${file.path}\n${cleanContent.substring(0, 500)}...`)
+      console.log(`  ✅ ${file.path} generated (${cleanContent.length} chars)`)
+      
+    } catch (e) {
+      console.error(`  ❌ Failed to generate ${file.path}:`, e)
+      // Continue with other files rather than failing entirely
+    }
+  }
+  
+  // Validate we have minimum required files
+  const requiredFiles = ['package.json', 'index.html', 'src/main.tsx', 'src/App.tsx', 'src/index.css']
+  const missingFiles = requiredFiles.filter(f => !codeFiles[f])
+  
+  if (missingFiles.length > 0) {
+    console.warn(`⚠️ Missing required files: ${missingFiles.join(', ')}`)
+    
+    // Generate missing critical files with simple fallbacks
+    for (const missing of missingFiles) {
+      if (!codeFiles[missing]) {
+        console.log(`  🔧 Generating fallback for ${missing}...`)
+        codeFiles[missing] = getDefaultFileContent(missing, projectContext)
+      }
+    }
+  }
+  
+  console.log(`✅ Multi-step generation complete: ${Object.keys(codeFiles).length} files`)
+  return codeFiles
+}
+
+// Fallback content for critical files
+function getDefaultFileContent(filePath: string, context: string): string {
+  const title = context.split('\n')[0].substring(0, 50)
+  
+  const defaults: Record<string, string> = {
+    'package.json': JSON.stringify({
+      name: 'buildlab-project',
+      private: true,
+      version: '0.0.1',
+      type: 'module',
+      scripts: {
+        dev: 'vite',
+        build: 'tsc && vite build',
+        preview: 'vite preview'
+      },
+      dependencies: {
+        'react': '^18.2.0',
+        'react-dom': '^18.2.0',
+        'react-router-dom': '^6.20.0',
+        'lucide-react': '^0.294.0'
+      },
+      devDependencies: {
+        '@types/react': '^18.2.43',
+        '@types/react-dom': '^18.2.17',
+        '@vitejs/plugin-react': '^4.2.1',
+        'autoprefixer': '^10.4.16',
+        'postcss': '^8.4.32',
+        'tailwindcss': '^3.4.0',
+        'typescript': '^5.2.2',
+        'vite': '^5.0.8'
+      }
+    }, null, 2),
+    
+    'index.html': `<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <style>body { background: #0a0a0a; }</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>`,
+
+    'src/main.tsx': `import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)`,
+
+    'src/App.tsx': `import React from 'react'
+import { Sparkles } from 'lucide-react'
+
+export default function App() {
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+      <div className="text-center">
+        <Sparkles className="w-16 h-16 mx-auto text-purple-500 mb-4" />
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+          ${title}
+        </h1>
+        <p className="mt-4 text-zinc-400">Generated by BuildLab</p>
+      </div>
+    </div>
+  )
+}`,
+
+    'src/index.css': `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0a0a0a;
+}`
+  }
+  
+  return defaults[filePath] || ''
 }
 
 // AWS Signature V4 Helper Functions
@@ -375,22 +871,23 @@ async function uploadToS3(
   return baseUrl
 }
 
-// Create GitHub repository
+// Create GitHub repository using user's connected GitHub token
 async function createGitHubRepo(
-  username: string,
+  userGithubToken: string,
   projectSlug: string,
   files: Record<string, string>,
   description: string
 ): Promise<string> {
   const repoName = `buildlab-${projectSlug}`
   
-  // Create repo using GitHub API
+  // Create repo using GitHub API with user's token
   const createRepoResponse = await fetch('https://api.github.com/user/repos', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${githubToken}`,
+      'Authorization': `Bearer ${userGithubToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'BuildLab-Generator',
     },
     body: JSON.stringify({
       name: repoName,
@@ -408,20 +905,28 @@ async function createGitHubRepo(
 
   const repo = await createRepoResponse.json()
   
+  // Wait a moment for GitHub to initialize the repo
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  
   // Add files to repo
   for (const [path, content] of Object.entries(files)) {
-    await fetch(`https://api.github.com/repos/${repo.full_name}/contents/${path}`, {
+    const addFileResponse = await fetch(`https://api.github.com/repos/${repo.full_name}/contents/${path}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${githubToken}`,
+        'Authorization': `Bearer ${userGithubToken}`,
         'Content-Type': 'application/json',
         'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'BuildLab-Generator',
       },
       body: JSON.stringify({
         message: `Add ${path}`,
         content: btoa(unescape(encodeURIComponent(content))),
       }),
     })
+    
+    if (!addFileResponse.ok) {
+      console.warn(`Warning: Failed to add ${path} to repo`)
+    }
   }
 
   return repo.html_url
@@ -429,15 +934,14 @@ async function createGitHubRepo(
 
 // Main handler
 Deno.serve(async (req) => {
+  const origin = req.headers.get('Origin')
+  const corsHeaders = getCorsHeaders(origin)
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
+      headers: corsHeaders,
     })
   }
 
@@ -449,7 +953,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'Missing authorization header' }),
         { 
           status: 401, 
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders } 
         }
       )
     }
@@ -464,15 +968,17 @@ Deno.serve(async (req) => {
     })
     
     // Verify the user token by passing it directly
+    console.log('Attempting to verify token:', token.substring(0, 50) + '...')
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     
     if (authError || !user) {
       console.error('Auth error:', authError?.message, 'User:', user)
+      console.error('Full auth error:', JSON.stringify(authError))
       return new Response(
         JSON.stringify({ error: authError?.message || 'Invalid or expired token' }),
         { 
           status: 401, 
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders } 
         }
       )
     }
@@ -488,15 +994,19 @@ Deno.serve(async (req) => {
       options?: GenerationOptions 
     }
     
+    // Check if this is a single-section generation request
+    const generateOnly = options?.generateOnly || null
+    
     // Default options if not provided
     const genOptions: GenerationOptions = {
-      marketResearch: options?.marketResearch ?? true,
-      projectCharter: options?.projectCharter ?? true,
-      prd: options?.prd ?? true,
-      techSpec: options?.techSpec ?? true,
-      codePrototype: options?.codePrototype ?? false,
+      marketResearch: generateOnly === 'marketResearch' || (!generateOnly && (options?.marketResearch ?? true)),
+      projectCharter: generateOnly === 'projectCharter' || (!generateOnly && (options?.projectCharter ?? true)),
+      prd: generateOnly === 'prd' || (!generateOnly && (options?.prd ?? true)),
+      techSpec: generateOnly === 'techSpec' || (!generateOnly && (options?.techSpec ?? true)),
+      codePrototype: generateOnly === 'codePrototype' || (!generateOnly && (options?.codePrototype ?? false)),
       customInstructions: options?.customInstructions ?? '',
       focusArea: options?.focusArea ?? 'balanced',
+      generateOnly,
     }
     
     // Fetch build request details
@@ -510,18 +1020,45 @@ Deno.serve(async (req) => {
       throw new Error('Build request not found')
     }
 
+    // ==========================================================================
+    // PROMPT SAFETY CHECK - Validate all user-provided content before processing
+    // ==========================================================================
+    const validation = validateProjectRequest({
+      title: buildRequest.title,
+      description: buildRequest.description,
+      short_description: buildRequest.short_description,
+      target_audience: buildRequest.target_audience,
+      features: buildRequest.features,
+      customInstructions: genOptions.customInstructions,
+    })
+
+    if (!validation.valid) {
+      console.error('⛔ Content validation failed:', validation.error)
+      return new Response(
+        JSON.stringify({ error: `Content policy violation: ${validation.error}` }),
+        { 
+          status: 400, 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders } 
+        }
+      )
+    }
+
+    // Use sanitized data
+    const safeData = validation.sanitized
+    console.log('✅ Content validation passed')
+
     const focusModifier = FOCUS_MODIFIERS[genOptions.focusArea] || ''
-    const customContext = genOptions.customInstructions 
-      ? `\n\nCustom Instructions from User:\n${genOptions.customInstructions}` 
+    const customContext = safeData.customInstructions 
+      ? `\n\nAdditional Context:\n${safeData.customInstructions}` 
       : ''
 
     const projectContext = `
-Project Title: ${buildRequest.title}
+Project Title: ${safeData.title}
 Category: ${buildRequest.category}
-Description: ${buildRequest.description}
-Short Description: ${buildRequest.short_description}
-Target Audience: ${buildRequest.target_audience || 'General users'}
-Key Features Requested: ${buildRequest.features?.join(', ') || 'Standard web application features'}
+Description: ${safeData.description}
+Short Description: ${safeData.short_description}
+Target Audience: ${safeData.target_audience || 'General users'}
+Key Features Requested: ${safeData.features?.join(', ') || 'Standard web application features'}
 Creator: ${buildRequest.profiles?.username}
 ${focusModifier ? `\nFocus Area: ${focusModifier}` : ''}${customContext}
     `.trim()
@@ -584,9 +1121,19 @@ ${focusModifier ? `\nFocus Area: ${focusModifier}` : ''}${customContext}
       console.log('✅ Tech Spec complete')
     }
 
-    // Code generation (optional, only if selected)
+    // Code generation (optional, only if selected) - Use multi-step for reliability
     if (genOptions.codePrototype) {
-      const codeContext = `
+      console.log('🚀 Starting code prototype generation...')
+      
+      try {
+        // Try multi-step generation first (more reliable for complex apps)
+        codeFiles = await generateCodeMultiStep(projectContext, prd, techSpec)
+        console.log(`✅ Code generation complete - ${Object.keys(codeFiles).length} files generated`)
+      } catch (multiStepError) {
+        console.warn('⚠️ Multi-step generation failed, trying single-shot fallback...', multiStepError)
+        
+        // Fallback to single-shot if multi-step fails
+        const codeContext = `
 ${projectContext}
 
 ${prd ? `PRD Summary:\n${prd.substring(0, 2000)}` : ''}
@@ -596,11 +1143,58 @@ ${techSpec ? `Technical Spec:\n${techSpec}` : ''}
 Generate a complete, working React application based on these specifications.
 Make it visually impressive with a modern dark theme, animations, and professional UI.
 Include realistic mock data and full interactivity.
-      `.trim()
+        `.trim()
 
-      const codeFilesJson = await callAgent(AGENT_PROMPTS.coder, codeContext, true)
-      codeFiles = JSON.parse(codeFilesJson)
-      console.log('✅ Code generation complete')
+        let codeFilesJson = ''
+        try {
+          codeFilesJson = await withRetry(
+            () => callAgent(AGENT_PROMPTS.coder, codeContext, true),
+            2,
+            2000
+          )
+          
+          // Clean up potential markdown code fences if model added them despite instructions
+          let cleanedJson = codeFilesJson.trim()
+          if (cleanedJson.startsWith('```json')) {
+            cleanedJson = cleanedJson.slice(7)
+          } else if (cleanedJson.startsWith('```')) {
+            cleanedJson = cleanedJson.slice(3)
+          }
+          if (cleanedJson.endsWith('```')) {
+            cleanedJson = cleanedJson.slice(0, -3)
+          }
+          cleanedJson = cleanedJson.trim()
+          
+          codeFiles = JSON.parse(cleanedJson)
+          
+          // Validate that we got actual file content
+          const fileCount = Object.keys(codeFiles).length
+          if (fileCount < 3) {
+            console.warn(`⚠️ Code generation returned only ${fileCount} files, using defaults`)
+            // Add missing critical files
+            const required = ['package.json', 'index.html', 'src/main.tsx', 'src/App.tsx', 'src/index.css']
+            for (const file of required) {
+              if (!codeFiles[file]) {
+                codeFiles[file] = getDefaultFileContent(file, projectContext)
+              }
+            }
+          }
+          
+          console.log(`✅ Fallback code generation complete - ${Object.keys(codeFiles).length} files`)
+        } catch (parseError) {
+          console.error('❌ Code generation JSON parse error:', parseError)
+          console.error('Raw response length:', codeFilesJson?.length || 0)
+          // Use default files rather than failing entirely
+          codeFiles = {
+            'package.json': getDefaultFileContent('package.json', projectContext),
+            'index.html': getDefaultFileContent('index.html', projectContext),
+            'src/main.tsx': getDefaultFileContent('src/main.tsx', projectContext),
+            'src/App.tsx': getDefaultFileContent('src/App.tsx', projectContext),
+            'src/index.css': getDefaultFileContent('src/index.css', projectContext),
+          }
+          console.log('✅ Using default code template')
+        }
+      }
     }
 
     // Generate project slug
@@ -609,7 +1203,7 @@ Include realistic mock data and full interactivity.
       .replace(/[^a-z0-9]+/g, '-')
       .substring(0, 30)
 
-    // Create GitHub repo (only if code was generated)
+    // Create GitHub repo (only if code was generated AND user has connected GitHub)
     let githubUrl = ''
     let previewUrl: string | null = null
     
@@ -622,37 +1216,56 @@ Include realistic mock data and full interactivity.
         console.error('S3 upload failed, continuing...', e)
       }
       
-      // Also create GitHub repo
-      try {
-        githubUrl = await createGitHubRepo(
-          buildRequest.profiles?.username || 'user',
-          projectSlug,
-          codeFiles,
-          buildRequest.short_description
-        )
-        console.log('✅ GitHub repo created:', githubUrl)
-      } catch (e) {
-        console.error('GitHub creation failed, continuing...', e)
+      // Create GitHub repo only if user has connected their GitHub account
+      const userGithubToken = buildRequest.profiles?.github_access_token
+      if (userGithubToken) {
+        try {
+          githubUrl = await createGitHubRepo(
+            userGithubToken,
+            projectSlug,
+            codeFiles,
+            safeData.short_description || ''
+          )
+          console.log('✅ GitHub repo created:', githubUrl)
+        } catch (e) {
+          console.error('GitHub creation failed, continuing...', e)
+        }
+      } else {
+        console.log('ℹ️ Skipping GitHub repo - user has not connected GitHub account')
       }
+    }
+
+    // For single-section generation, fetch existing data to merge
+    let existingProject = null
+    if (generateOnly) {
+      const { data } = await supabaseAdmin
+        .from('generated_projects')
+        .select('*')
+        .eq('build_request_id', build_request_id)
+        .single()
+      existingProject = data
+    }
+
+    // Build update object, preserving existing data for single-section generation
+    const projectData = {
+      build_request_id,
+      user_id: buildRequest.user_id,
+      project_slug: projectSlug,
+      market_research: marketResearch || existingProject?.market_research || '',
+      project_charter: projectCharter || existingProject?.project_charter || '',
+      prd: prd || existingProject?.prd || '',
+      tech_spec: techSpec || existingProject?.tech_spec || '',
+      code_files: Object.keys(codeFiles).length > 0 ? codeFiles : (existingProject?.code_files || {}),
+      preview_url: previewUrl || existingProject?.preview_url || null,
+      github_url: githubUrl || existingProject?.github_url || null,
+      status: 'completed',
+      generated_at: new Date().toISOString(),
     }
 
     // Store generated content
     const { error: insertError } = await supabaseAdmin
       .from('generated_projects')
-      .upsert({
-        build_request_id,
-        user_id: buildRequest.user_id,
-        project_slug: projectSlug,
-        market_research: marketResearch,
-        project_charter: projectCharter,
-        prd,
-        tech_spec: techSpec,
-        code_files: codeFiles,
-        preview_url: previewUrl,
-        github_url: githubUrl,
-        status: 'completed',
-        generated_at: new Date().toISOString(),
-      })
+      .upsert(projectData)
 
     if (insertError) {
       console.error('Failed to save generated project:', insertError)
@@ -688,7 +1301,7 @@ Include realistic mock data and full interactivity.
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
+          ...corsHeaders,
         },
       }
     )
@@ -702,7 +1315,7 @@ Include realistic mock data and full interactivity.
         status: 500,
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
+          ...corsHeaders,
         },
       }
     )

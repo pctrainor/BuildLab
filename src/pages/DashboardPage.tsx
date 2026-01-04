@@ -89,43 +89,49 @@ export function DashboardPage() {
   }
 
   const handleGenerateAI = async (options: GenerationOptions) => {
-    if (!selectedRequest) return
+    console.log('handleGenerateAI called with:', options)
+    if (!selectedRequest) {
+      console.log('No selected request')
+      return
+    }
     
+    console.log('Selected request:', selectedRequest.id)
     setGeneratingId(selectedRequest.id)
     try {
-      // Refresh session to ensure we have a valid token
-      const { data: { session }, error: sessionError } = await supabase.auth.refreshSession()
+      console.log('Attempting to call Edge Function via Supabase client...')
       
-      if (sessionError || !session?.access_token) {
-        showToast('Session expired. Please log out and log back in.', 'error')
-        setGeneratingId(null)
-        return
-      }
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-project`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            build_request_id: selectedRequest.id,
-            options: {
-              marketResearch: options.marketResearch,
-              projectCharter: options.projectCharter,
-              prd: options.prd,
-              techSpec: options.techSpec,
-              codePrototype: options.codePrototype,
-              customInstructions: options.customInstructions,
-              focusArea: options.focusArea,
-            }
-          }),
+      // Use Supabase's built-in functions.invoke() which handles auth automatically
+      const { data, error: functionError } = await supabase.functions.invoke('generate-project', {
+        body: {
+          build_request_id: selectedRequest.id,
+          options: {
+            marketResearch: options.marketResearch,
+            projectCharter: options.projectCharter,
+            prd: options.prd,
+            techSpec: options.techSpec,
+            codePrototype: options.codePrototype,
+            customInstructions: options.customInstructions,
+            focusArea: options.focusArea,
+          }
         }
-      )
+      })
 
-      if (response.ok) {
+      console.log('Edge Function response:', { data, error: functionError })
+      
+      if (functionError) {
+        console.error('Generation error:', functionError)
+        console.error('Error context:', JSON.stringify(functionError, null, 2))
+        // Try to extract more details from the error
+        const errorMessage = functionError.message || 
+          (typeof functionError === 'object' && 'error' in functionError ? (functionError as { error: string }).error : null) ||
+          'Failed to generate. Please try again.'
+        showToast(errorMessage, 'error')
+      } else if (data && typeof data === 'object' && 'error' in data) {
+        // Handle case where function returns error in data
+        console.error('Function returned error in data:', data)
+        showToast((data as { error: string }).error || 'Generation failed', 'error')
+      } else {
+        console.log('Generation started successfully!')
         showToast('AI generation started! This may take a few minutes.', 'success')
         setModalOpen(false)
         // Update local state to show processing immediately
@@ -142,10 +148,6 @@ export function DashboardPage() {
             .order('created_at', { ascending: false })
           if (requestsData) setRequests(requestsData)
         }, 30000)
-      } else {
-        const error = await response.json()
-        console.error('Generation error:', error)
-        showToast(error.error || 'Failed to start generation. Please try again.', 'error')
       }
     } catch (err) {
       console.error('Generation request failed:', err)
