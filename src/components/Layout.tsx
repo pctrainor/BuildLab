@@ -1,7 +1,7 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuthStore } from '../lib/auth'
-import { Compass, Trophy, HelpCircle, PlusCircle, LayoutDashboard, User, LogOut, Sparkles, Menu, X } from 'lucide-react'
+import { Compass, Trophy, PlusCircle, User, LogOut, Menu, X, Beaker, ChevronDown } from 'lucide-react'
 import { BuildLabLogo } from './BuildLabLogo'
 
 export function Layout() {
@@ -26,7 +26,7 @@ export function Layout() {
               <BuildLabLogo size="sm" />
             </Link>
 
-            {/* Nav Links */}
+            {/* Nav Links - Simplified */}
             <div className="hidden md:flex items-center gap-6">
               <Link
                 to="/explore"
@@ -37,32 +37,49 @@ export function Layout() {
               </Link>
               <Link
                 to="/competitions"
-                className="flex items-center gap-2 text-slate-400 hover:text-cyan-300 transition-colors"
+                className="flex items-center gap-2 text-slate-400 hover:text-yellow-400 transition-colors"
               >
-                <Trophy size={18} className="text-cyan-300" />
-                <span>Competitions</span>
+                <Trophy size={18} className="text-yellow-400" />
+                <span>Compete</span>
               </Link>
-              <Link
-                to="/campaigns"
-                className="flex items-center gap-2 text-slate-400 hover:text-purple-400 transition-colors"
-              >
-                <Sparkles size={18} className="text-purple-400" />
-                <span>Campaigns</span>
-              </Link>
-              <Link
-                to="/leaderboard"
-                className="flex items-center gap-2 text-slate-400 hover:text-purple-500 transition-colors"
-              >
-                <Trophy size={18} className="text-purple-500" />
-                <span>Leaderboard</span>
-              </Link>
-              <Link
-                to="/how-it-works"
-                className="flex items-center gap-2 text-slate-400 hover:text-pink-400 transition-colors"
-              >
-                <HelpCircle size={18} className="text-pink-400" />
-                <span>How It Works</span>
-              </Link>
+              {user && (
+                <Link
+                  to="/dashboard"
+                  className="flex items-center gap-2 text-slate-400 hover:text-purple-400 transition-colors"
+                >
+                  <Beaker size={18} className="text-purple-400" />
+                  <span>My Lab</span>
+                </Link>
+              )}
+              {/* More dropdown for secondary items */}
+              <div className="relative group">
+                <button className="flex items-center gap-1 text-slate-500 hover:text-slate-300 transition-colors text-sm">
+                  <span>More</span>
+                  <ChevronDown size={14} />
+                </button>
+                <div className="absolute left-0 top-full mt-2 w-44 bg-slate-900 rounded-xl border border-slate-700/50 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                  <div className="p-2">
+                    <Link
+                      to="/campaigns"
+                      className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+                    >
+                      Campaigns
+                    </Link>
+                    <Link
+                      to="/leaderboard"
+                      className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+                    >
+                      Leaderboard
+                    </Link>
+                    <Link
+                      to="/how-it-works"
+                      className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+                    >
+                      How It Works
+                    </Link>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* User Section */}
@@ -101,11 +118,11 @@ export function Layout() {
                           to="/dashboard"
                           className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
                         >
-                          <LayoutDashboard size={16} />
-                          <span>Dashboard</span>
+                          <Beaker size={16} />
+                          <span>My Lab</span>
                         </Link>
                         <Link
-                          to="/profile"
+                          to={`/u/${profile?.username}`}
                           className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
                         >
                           <User size={16} />
@@ -150,35 +167,48 @@ export function Layout() {
               <Link
                 to="/competitions"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-cyan-300 hover:bg-slate-800/50 rounded-lg transition-colors"
+                className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-yellow-400 hover:bg-slate-800/50 rounded-lg transition-colors"
               >
-                <Trophy size={20} className="text-cyan-300" />
-                <span>Competitions</span>
+                <Trophy size={20} className="text-yellow-400" />
+                <span>Compete</span>
               </Link>
-              <Link
-                to="/campaigns"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-purple-400 hover:bg-slate-800/50 rounded-lg transition-colors"
-              >
-                <Sparkles size={20} className="text-purple-400" />
-                <span>Campaigns</span>
-              </Link>
-              <Link
-                to="/leaderboard"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-purple-500 hover:bg-slate-800/50 rounded-lg transition-colors"
-              >
-                <Trophy size={20} className="text-purple-500" />
-                <span>Leaderboard</span>
-              </Link>
-              <Link
-                to="/how-it-works"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-pink-400 hover:bg-slate-800/50 rounded-lg transition-colors"
-              >
-                <HelpCircle size={20} className="text-pink-400" />
-                <span>How It Works</span>
-              </Link>
+              
+              {user && (
+                <Link
+                  to="/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-purple-400 hover:bg-slate-800/50 rounded-lg transition-colors"
+                >
+                  <Beaker size={20} className="text-purple-400" />
+                  <span>My Lab</span>
+                </Link>
+              )}
+              
+              {/* Secondary links */}
+              <div className="pt-2 border-t border-slate-800/50">
+                <p className="px-4 py-2 text-xs text-slate-500 uppercase tracking-wider">More</p>
+                <Link
+                  to="/campaigns"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+                >
+                  <span>Campaigns</span>
+                </Link>
+                <Link
+                  to="/leaderboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+                >
+                  <span>Leaderboard</span>
+                </Link>
+                <Link
+                  to="/how-it-works"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+                >
+                  <span>How It Works</span>
+                </Link>
+              </div>
               
               <hr className="border-slate-800/50 my-2" />
               
@@ -193,15 +223,7 @@ export function Layout() {
                     <span>Submit Idea</span>
                   </Link>
                   <Link
-                    to="/dashboard"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
-                  >
-                    <LayoutDashboard size={20} />
-                    <span>Dashboard</span>
-                  </Link>
-                  <Link
-                    to="/profile"
+                    to={`/u/${profile?.username}`}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
                   >
