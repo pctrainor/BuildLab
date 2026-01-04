@@ -24,8 +24,8 @@ const PRICE_IDS: Record<number, string> = {
 
 // Premium tier price IDs (create these products in Stripe Dashboard)
 const PREMIUM_PRICE_IDS: Record<string, { priceId: string, submissions: number }> = {
-  'pro_generate': { priceId: 'price_pro_generate_29', submissions: 5 },   // $29 - Pro Generate with AI
-  'premium': { priceId: 'price_premium_99', submissions: 10 },             // $99 - Premium with priority
+  'pro_generate': { priceId: 'price_1SlldrKkfLbczEawQEOsfbZI', submissions: 5 },   // $29 - Pro Generate with AI
+  'premium': { priceId: 'price_1SlleUKkfLbczEawBmvgZF5I', submissions: 10 },       // $99 - Premium with priority
 }
 
 Deno.serve(async (req) => {

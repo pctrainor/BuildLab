@@ -186,11 +186,6 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Referral Widget */}
-      <div className="mb-12">
-        <ReferralWidget />
-      </div>
-
       {/* Submissions */}
       <div>
         <h2 className="text-xl font-bold text-white mb-6">Your Submissions</h2>
@@ -343,6 +338,11 @@ export function DashboardPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Referral Widget - at bottom */}
+      <div className="mt-12 pt-8 border-t border-slate-700/50">
+        <ReferralWidget />
       </div>
 
       {/* AI Generation Modal */}
