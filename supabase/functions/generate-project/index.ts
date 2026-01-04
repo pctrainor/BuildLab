@@ -6,6 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 const openaiKey = Deno.env.get('OPENAI_API_KEY')!
 const githubToken = Deno.env.get('GITHUB_TOKEN')!
 
@@ -335,21 +336,33 @@ Deno.serve(async (req) => {
       )
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    
-    // Verify the user token
+    // Extract the token from the Authorization header
     const token = authHeader.replace('Bearer ', '')
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+    })
+    
+    // Verify the user token by passing it directly
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     
     if (authError || !user) {
+      console.error('Auth error:', authError?.message, 'User:', user)
       return new Response(
-        JSON.stringify({ error: 'Invalid or expired token' }),
+        JSON.stringify({ error: authError?.message || 'Invalid or expired token' }),
         { 
           status: 401, 
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } 
         }
       )
     }
+    
+    console.log('User authenticated:', user.id, user.email)
+    
+    // Now create a service role client for database operations
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
     
     // Get request body with options
     const { build_request_id, options } = await req.json() as { 
@@ -369,7 +382,7 @@ Deno.serve(async (req) => {
     }
     
     // Fetch build request details
-    const { data: buildRequest, error: fetchError } = await supabase
+    const { data: buildRequest, error: fetchError } = await supabaseAdmin
       .from('build_requests')
       .select('*, profiles(*)')
       .eq('id', build_request_id)
@@ -396,7 +409,7 @@ ${focusModifier ? `\nFocus Area: ${focusModifier}` : ''}${customContext}
     `.trim()
 
     // Update status to processing
-    await supabase
+    await supabaseAdmin
       .from('build_requests')
       .update({ generation_status: 'processing' })
       .eq('id', build_request_id)
@@ -498,7 +511,7 @@ Include realistic mock data and full interactivity.
     const previewUrl = genOptions.codePrototype ? `https://preview.buildlab.app/${projectSlug}` : null
 
     // Store generated content
-    const { error: insertError } = await supabase
+    const { error: insertError } = await supabaseAdmin
       .from('generated_projects')
       .upsert({
         build_request_id,
@@ -520,7 +533,7 @@ Include realistic mock data and full interactivity.
     }
 
     // Update build request status
-    await supabase
+    await supabaseAdmin
       .from('build_requests')
       .update({ 
         generation_status: 'completed',

@@ -89,13 +89,22 @@ export function GeneratedProjectPage() {
     setGenerating(true)
     
     try {
+      // Refresh session to ensure we have a valid token
+      const { data: { session }, error: sessionError } = await supabase.auth.refreshSession()
+      
+      if (sessionError || !session?.access_token) {
+        showToast('Session expired. Please log out and log back in.', 'error')
+        setGenerating(false)
+        return
+      }
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-project`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            'Authorization': `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({ build_request_id: project.id }),
         }
