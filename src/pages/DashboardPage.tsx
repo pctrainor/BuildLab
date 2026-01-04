@@ -26,10 +26,19 @@ interface GenerationOptions {
   focusArea: string
 }
 
+// Extended type to include generated project data
+interface BuildRequestWithProject extends BuildRequest {
+  generated_project?: {
+    project_slug: string
+    preview_url: string | null
+    github_url: string | null
+  } | null
+}
+
 export function DashboardPage() {
   const { user, profile } = useAuthStore()
   const { showToast } = useToast()
-  const [requests, setRequests] = useState<BuildRequest[]>([])
+  const [requests, setRequests] = useState<BuildRequestWithProject[]>([])
   const [generatingId, setGeneratingId] = useState<string | null>(null)
   const [stats, setStats] = useState({
     totalSubmissions: 0,
@@ -42,14 +51,25 @@ export function DashboardPage() {
     if (!user) return
     
     const loadData = async () => {
-      // Fetch user's build requests
+      // Fetch user's build requests with their generated projects
       const { data: requestsData } = await supabase
         .from('build_requests')
-        .select('*')
+        .select(`
+          *,
+          generated_project:generated_projects(project_slug, preview_url, github_url)
+        `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
       
-      setRequests(requestsData || [])
+      // Transform the data to flatten the generated_project array to a single object
+      const transformedData = (requestsData || []).map(r => ({
+        ...r,
+        generated_project: Array.isArray(r.generated_project) && r.generated_project.length > 0 
+          ? r.generated_project[0] 
+          : null
+      }))
+      
+      setRequests(transformedData as BuildRequestWithProject[])
 
       // Calculate stats
       if (requestsData) {
@@ -143,10 +163,21 @@ export function DashboardPage() {
           if (!user) return
           const { data: requestsData } = await supabase
             .from('build_requests')
-            .select('*')
+            .select(`
+              *,
+              generated_project:generated_projects(project_slug, preview_url, github_url)
+            `)
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
-          if (requestsData) setRequests(requestsData)
+          if (requestsData) {
+            const transformedData = requestsData.map(r => ({
+              ...r,
+              generated_project: Array.isArray(r.generated_project) && r.generated_project.length > 0 
+                ? r.generated_project[0] 
+                : null
+            }))
+            setRequests(transformedData as BuildRequestWithProject[])
+          }
         }, 30000)
       }
     } catch (err) {
@@ -287,21 +318,19 @@ export function DashboardPage() {
                           </span>
                         )}
                         
-                        {request.preview_url && (
-                          <a 
-                            href={request.preview_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        {request.generated_project?.project_slug && (
+                          <Link 
+                            to={`/demo/${request.generated_project.project_slug}`}
                             className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
                           >
                             <Eye size={12} />
                             Preview
-                          </a>
+                          </Link>
                         )}
                         
-                        {request.github_url && (
+                        {request.generated_project?.github_url && (
                           <a 
-                            href={request.github_url}
+                            href={request.generated_project.github_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
@@ -350,9 +379,9 @@ export function DashboardPage() {
                     )}
                     
                     {/* View AI Insights Button */}
-                    {request.generation_status === 'completed' && (
+                    {request.generation_status === 'completed' && request.generated_project?.project_slug && (
                       <Link
-                        to={`/project/${request.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30)}`}
+                        to={`/project/${request.generated_project.project_slug}`}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 text-cyan-400 text-sm rounded-lg transition-colors border border-cyan-500/30"
                       >
                         <FileText size={14} />
