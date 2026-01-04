@@ -358,6 +358,14 @@ export function GeneratedProjectPage() {
               </a>
             )}
 
+            {/* Show GitHub connect prompt when code exists but no GitHub URL */}
+            {!project.github_url && project.code_files && typeof project.code_files === 'object' && Object.keys(project.code_files as Record<string, string>).length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 text-slate-400 rounded-lg border border-slate-700/50">
+                <Github size={18} />
+                <span className="text-sm">Connect GitHub in settings to auto-create repos</span>
+              </div>
+            )}
+
             {/* Download Code button - shows when code files exist */}
             {project.code_files && typeof project.code_files === 'object' && Object.keys(project.code_files as Record<string, string>).length > 0 && (
               <button
