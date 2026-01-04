@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Profile, BuildRequestWithProfile } from '../lib/database.types'
-import { Trophy, Star, Clock, ChevronLeft, ChevronRight, Flame, DollarSign, TrendingUp, Calendar, Zap } from 'lucide-react'
+import { Trophy, Star, ChevronLeft, ChevronRight, Flame, DollarSign, TrendingUp, Calendar, Zap } from 'lucide-react'
 
 // Countdown Timer Logic
 function getNextThursday8PMCST(): Date {
