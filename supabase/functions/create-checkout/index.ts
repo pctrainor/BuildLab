@@ -22,10 +22,10 @@ const PRICE_IDS: Record<number, string> = {
   10: 'price_1SlkAuKkfLbczEawJLVDg39F', // 10 submissions for $12
 }
 
-// Premium tier price IDs
+// Premium tier price IDs (create these products in Stripe Dashboard)
 const PREMIUM_PRICE_IDS: Record<string, { priceId: string, submissions: number }> = {
-  'pro_generate': { priceId: 'price_pro_generate_placeholder', submissions: 5 },  // $29 - Pro Generate
-  'premium': { priceId: 'price_premium_placeholder', submissions: 10 },            // $99 - Premium
+  'pro_generate': { priceId: 'price_pro_generate_29', submissions: 5 },   // $29 - Pro Generate with AI
+  'premium': { priceId: 'price_premium_99', submissions: 10 },             // $99 - Premium with priority
 }
 
 Deno.serve(async (req) => {

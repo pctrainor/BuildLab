@@ -4,10 +4,33 @@ import { useAuthStore } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import type { BuildRequest } from '../lib/database.types'
 import { ReferralWidget } from '../components/ReferralWidget'
+import { AIGenerationModal } from '../components/AIGenerationModal'
+import { useToast } from '../components/Toast'
+import { 
+  Sparkles, 
+  Loader2, 
+  CheckCircle2, 
+  Github, 
+  FileText, 
+  Eye,
+  Rocket
+} from 'lucide-react'
+
+interface GenerationOptions {
+  marketResearch: boolean
+  projectCharter: boolean
+  prd: boolean
+  techSpec: boolean
+  codePrototype: boolean
+  customInstructions: string
+  focusArea: string
+}
 
 export function DashboardPage() {
   const { user, profile } = useAuthStore()
+  const { showToast } = useToast()
   const [requests, setRequests] = useState<BuildRequest[]>([])
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
   const [stats, setStats] = useState({
     totalSubmissions: 0,
     totalVotes: 0,
@@ -30,7 +53,7 @@ export function DashboardPage() {
 
       // Calculate stats
       if (requestsData) {
-        const totalVotes = requestsData.reduce((sum, r) => sum + r.vote_count, 0)
+        const totalVotes = requestsData.reduce((sum, r) => sum + (r.vote_count || 0), 0)
         const wins = requestsData.filter(r => r.status === 'winner').length
         
         setStats({
@@ -45,6 +68,61 @@ export function DashboardPage() {
     
     loadData()
   }, [user])
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedRequest, setSelectedRequest] = useState<BuildRequest | null>(null)
+
+  const openGenerationModal = (request: BuildRequest) => {
+    setSelectedRequest(request)
+    setModalOpen(true)
+  }
+
+  const handleGenerateAI = async (options: GenerationOptions) => {
+    if (!selectedRequest) return
+    
+    setGeneratingId(selectedRequest.id)
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-project`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            build_request_id: selectedRequest.id,
+            options: {
+              marketResearch: options.marketResearch,
+              projectCharter: options.projectCharter,
+              prd: options.prd,
+              techSpec: options.techSpec,
+              codePrototype: options.codePrototype,
+              customInstructions: options.customInstructions,
+              focusArea: options.focusArea,
+            }
+          }),
+        }
+      )
+
+      if (response.ok) {
+        showToast('AI generation started! This may take a few minutes.', 'success')
+        // Update local state to show processing
+        setRequests(prev => prev.map(r => 
+          r.id === selectedRequest.id ? { ...r, generation_status: 'processing' } : r
+        ))
+      } else {
+        const error = await response.json()
+        showToast(error.error || 'Failed to start generation. Please try again.', 'error')
+      }
+    } catch {
+      showToast('An error occurred. Please try again.', 'error')
+    } finally {
+      setGeneratingId(null)
+      setModalOpen(false)
+    }
+  }
 
   if (!user) {
     return (
@@ -154,19 +232,65 @@ export function DashboardPage() {
                       >
                         {request.title}
                       </Link>
-                      <span className={`px-3 py-1 text-xs rounded-full capitalize ${getStatusColor(request.status)}`}>
-                        {request.status.replace('_', ' ')}
+                      <span className={`px-3 py-1 text-xs rounded-full capitalize ${getStatusColor(request.status || 'submitted')}`}>
+                        {(request.status || 'submitted').replace('_', ' ')}
                       </span>
                     </div>
                     <p className="text-slate-400 text-sm line-clamp-2">{request.short_description}</p>
+                    
+                    {/* AI Generation Status */}
+                    {request.generation_status && (
+                      <div className="mt-3 flex items-center gap-2">
+                        {request.generation_status === 'completed' ? (
+                          <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded-full">
+                            <CheckCircle2 size={12} />
+                            AI Insights Ready
+                          </span>
+                        ) : request.generation_status === 'processing' ? (
+                          <span className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-full">
+                            <Loader2 size={12} className="animate-spin" />
+                            Generating...
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-700/50 px-2 py-1 rounded-full">
+                            <Sparkles size={12} />
+                            Pending Generation
+                          </span>
+                        )}
+                        
+                        {request.preview_url && (
+                          <a 
+                            href={request.preview_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+                          >
+                            <Eye size={12} />
+                            Preview
+                          </a>
+                        )}
+                        
+                        {request.github_url && (
+                          <a 
+                            href={request.github_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
+                          >
+                            <Github size={12} />
+                            Repo
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-6 text-center">
                     <div>
-                      <div className="text-2xl font-bold text-cyan-400">{request.vote_count}</div>
+                      <div className="text-2xl font-bold text-cyan-400">{request.vote_count || 0}</div>
                       <div className="text-slate-500 text-xs">votes</div>
                     </div>
-                    {request.boost_amount > 0 && (
+                    {(request.boost_amount || 0) > 0 && (
                       <div>
                         <div className="text-2xl font-bold text-yellow-400">${request.boost_amount}</div>
                         <div className="text-slate-500 text-xs">boosted</div>
@@ -177,20 +301,42 @@ export function DashboardPage() {
 
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-700/50">
                   <span className="text-slate-500 text-sm">
-                    Created {new Date(request.created_at).toLocaleDateString()}
+                    Created {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Recently'}
                   </span>
-                  <div className="flex gap-3">
+                  <div className="flex gap-2">
+                    {/* Generate AI Insights Button */}
+                    {!request.generation_status && (
+                      <button 
+                        onClick={() => openGenerationModal(request)}
+                        disabled={generatingId === request.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-purple-400 text-sm rounded-lg transition-colors border border-purple-500/30"
+                      >
+                        {generatingId === request.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Rocket size={14} />
+                        )}
+                        Generate AI Insights
+                      </button>
+                    )}
+                    
+                    {/* View AI Insights Button */}
+                    {request.generation_status === 'completed' && (
+                      <Link
+                        to={`/project/${request.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30)}`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 text-cyan-400 text-sm rounded-lg transition-colors border border-cyan-500/30"
+                      >
+                        <FileText size={14} />
+                        View AI Insights
+                      </Link>
+                    )}
+                    
                     <Link
                       to={`/request/${request.id}`}
-                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
+                      className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
                     >
                       View
                     </Link>
-                    {request.status === 'draft' && (
-                      <button className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 text-sm rounded-lg transition-colors">
-                        Edit
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -198,6 +344,15 @@ export function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* AI Generation Modal */}
+      <AIGenerationModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onGenerate={handleGenerateAI}
+        projectTitle={selectedRequest?.title || ''}
+        projectDescription={selectedRequest?.short_description || ''}
+      />
     </div>
   )
 }

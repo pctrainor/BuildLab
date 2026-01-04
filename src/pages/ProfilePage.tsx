@@ -40,7 +40,8 @@ export function ProfilePage() {
     fetchProfile()
   }, [username])
 
-  const formatDate = (date: string) => {
+  const formatDate = (date: string | null) => {
+    if (!date) return ''
     return new Date(date).toLocaleDateString('en-US', {
       month: 'long',
       year: 'numeric'

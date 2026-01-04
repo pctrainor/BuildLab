@@ -350,7 +350,7 @@ export function LeaderboardPage() {
                       Winner
                     </span>
                     <span className="text-slate-500 text-xs ml-auto">
-                      {new Date(winner.updated_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      {winner.updated_at ? new Date(winner.updated_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''}
                     </span>
                   </div>
                   <h3 className="font-semibold text-white mb-1 group-hover:text-cyan-400 transition-colors">

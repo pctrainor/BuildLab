@@ -139,7 +139,7 @@ export function RequestDetailPage() {
         .from('votes')
         .delete()
         .eq('user_id', user.id)
-        .eq('build_request_id', id)
+        .eq('build_request_id', id!)
       
       setHasVoted(false)
       showToast('Vote removed', 'info')
@@ -159,7 +159,8 @@ export function RequestDetailPage() {
     refreshRequest()
   }
 
-  const formatDate = (date: string) => {
+  const formatDate = (date: string | null | undefined) => {
+    if (!date) return ''
     return new Date(date).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -167,7 +168,8 @@ export function RequestDetailPage() {
     })
   }
 
-  const formatTime = (date: string) => {
+  const formatTime = (date: string | null | undefined) => {
+    if (!date) return ''
     return new Date(date).toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit'
@@ -217,7 +219,7 @@ export function RequestDetailPage() {
                   ? 'bg-green-500/20 text-green-400'
                   : 'bg-slate-700/50 text-slate-400'
               }`}>
-                {request.status.replace('_', ' ')}
+                {(request.status || 'pending').replace('_', ' ')}
               </span>
             </div>
             
@@ -403,7 +405,7 @@ export function RequestDetailPage() {
               </p>
             )}
 
-            {request.boost_amount > 0 && (
+            {(request.boost_amount || 0) > 0 && (
               <div className="mt-6 pt-6 border-t border-slate-700">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-yellow-400">${request.boost_amount}</div>

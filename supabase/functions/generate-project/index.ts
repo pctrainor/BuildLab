@@ -19,6 +19,16 @@ interface ProjectRequest {
   features: string[]
 }
 
+interface GenerationOptions {
+  marketResearch: boolean
+  projectCharter: boolean
+  prd: boolean
+  techSpec: boolean
+  codePrototype: boolean
+  customInstructions: string
+  focusArea: string
+}
+
 interface GeneratedProject {
   charter: string
   market_research: string
@@ -27,6 +37,16 @@ interface GeneratedProject {
   code_files: Record<string, string>
   preview_url: string
   github_url: string
+}
+
+// Focus area modifiers for prompts
+const FOCUS_MODIFIERS: Record<string, string> = {
+  balanced: '',
+  budget: 'Focus heavily on cost-efficiency, free/open-source tools, and minimizing infrastructure costs.',
+  speed: 'Prioritize speed-to-market, use existing templates/libraries, and suggest the fastest development approach.',
+  quality: 'Focus on code quality, testing, scalability, security best practices, and maintainability.',
+  mvp: 'Keep it minimal - only essential features for a proof of concept. Suggest what to cut.',
+  enterprise: 'Design for enterprise-grade: high availability, security compliance, audit logging, scalability.',
 }
 
 // Agent prompts for specialized tasks
@@ -186,8 +206,22 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    // Get request body
-    const { build_request_id } = await req.json()
+    // Get request body with options
+    const { build_request_id, options } = await req.json() as { 
+      build_request_id: string
+      options?: GenerationOptions 
+    }
+    
+    // Default options if not provided
+    const genOptions: GenerationOptions = {
+      marketResearch: options?.marketResearch ?? true,
+      projectCharter: options?.projectCharter ?? true,
+      prd: options?.prd ?? true,
+      techSpec: options?.techSpec ?? true,
+      codePrototype: options?.codePrototype ?? false,
+      customInstructions: options?.customInstructions ?? '',
+      focusArea: options?.focusArea ?? 'balanced',
+    }
     
     // Fetch build request details
     const { data: buildRequest, error: fetchError } = await supabase
@@ -200,6 +234,11 @@ Deno.serve(async (req) => {
       throw new Error('Build request not found')
     }
 
+    const focusModifier = FOCUS_MODIFIERS[genOptions.focusArea] || ''
+    const customContext = genOptions.customInstructions 
+      ? `\n\nCustom Instructions from User:\n${genOptions.customInstructions}` 
+      : ''
+
     const projectContext = `
 Project Title: ${buildRequest.title}
 Category: ${buildRequest.category}
@@ -208,6 +247,7 @@ Short Description: ${buildRequest.short_description}
 Target Audience: ${buildRequest.target_audience || 'General users'}
 Key Features Requested: ${buildRequest.features?.join(', ') || 'Standard web application features'}
 Creator: ${buildRequest.profiles?.username}
+${focusModifier ? `\nFocus Area: ${focusModifier}` : ''}${customContext}
     `.trim()
 
     // Update status to processing
@@ -217,46 +257,75 @@ Creator: ${buildRequest.profiles?.username}
       .eq('id', build_request_id)
 
     console.log('🚀 Starting multi-agent project generation...')
+    console.log('Options:', genOptions)
 
-    // Run agents in parallel where possible
-    const [marketResearch, projectCharter] = await Promise.all([
-      callAgent(AGENT_PROMPTS.research, projectContext),
-      callAgent(AGENT_PROMPTS.project_charter, projectContext),
-    ])
+    // Initialize results
+    let marketResearch = ''
+    let projectCharter = ''
+    let prd = ''
+    let techSpec = ''
+    let codeFiles: Record<string, string> = {}
 
-    console.log('✅ Research & Charter complete')
+    // Run selected agents
+    const parallelTasks: Promise<void>[] = []
 
-    // PRD needs research context
-    const prdContext = `${projectContext}\n\nMarket Research:\n${marketResearch}`
-    const prd = await callAgent(AGENT_PROMPTS.product_manager, prdContext)
+    if (genOptions.marketResearch) {
+      parallelTasks.push(
+        callAgent(AGENT_PROMPTS.research, projectContext).then(result => {
+          marketResearch = result
+          console.log('✅ Market Research complete')
+        })
+      )
+    }
 
-    console.log('✅ PRD complete')
+    if (genOptions.projectCharter) {
+      parallelTasks.push(
+        callAgent(AGENT_PROMPTS.project_charter, projectContext).then(result => {
+          projectCharter = result
+          console.log('✅ Project Charter complete')
+        })
+      )
+    }
 
-    // Tech spec needs PRD context
-    const techContext = `${projectContext}\n\nPRD:\n${prd}`
-    const techSpec = await callAgent(AGENT_PROMPTS.architect, techContext)
+    // Wait for parallel tasks
+    await Promise.all(parallelTasks)
 
-    console.log('✅ Tech Spec complete')
+    // PRD needs research context (if available)
+    if (genOptions.prd) {
+      const prdContext = marketResearch 
+        ? `${projectContext}\n\nMarket Research:\n${marketResearch}`
+        : projectContext
+      prd = await callAgent(AGENT_PROMPTS.product_manager, prdContext)
+      console.log('✅ PRD complete')
+    }
 
-    // Code generation needs all context
-    const codeContext = `
+    // Tech spec needs PRD context (if available)
+    if (genOptions.techSpec) {
+      const techContext = prd
+        ? `${projectContext}\n\nPRD:\n${prd}`
+        : projectContext
+      techSpec = await callAgent(AGENT_PROMPTS.architect, techContext)
+      console.log('✅ Tech Spec complete')
+    }
+
+    // Code generation (optional, only if selected)
+    if (genOptions.codePrototype) {
+      const codeContext = `
 ${projectContext}
 
-PRD Summary:
-${prd.substring(0, 2000)}
+${prd ? `PRD Summary:\n${prd.substring(0, 2000)}` : ''}
 
-Technical Spec:
-${techSpec}
+${techSpec ? `Technical Spec:\n${techSpec}` : ''}
 
 Generate a complete, working React application based on these specifications.
 Make it visually impressive with a modern dark theme, animations, and professional UI.
 Include realistic mock data and full interactivity.
-    `.trim()
+      `.trim()
 
-    const codeFilesJson = await callAgent(AGENT_PROMPTS.coder, codeContext, true)
-    const codeFiles = JSON.parse(codeFilesJson)
-
-    console.log('✅ Code generation complete')
+      const codeFilesJson = await callAgent(AGENT_PROMPTS.coder, codeContext, true)
+      codeFiles = JSON.parse(codeFilesJson)
+      console.log('✅ Code generation complete')
+    }
 
     // Generate project slug
     const projectSlug = buildRequest.title
@@ -264,18 +333,20 @@ Include realistic mock data and full interactivity.
       .replace(/[^a-z0-9]+/g, '-')
       .substring(0, 30)
 
-    // Create GitHub repo
+    // Create GitHub repo (only if code was generated)
     let githubUrl = ''
-    try {
-      githubUrl = await createGitHubRepo(
-        buildRequest.profiles?.username || 'user',
-        projectSlug,
-        codeFiles,
-        buildRequest.short_description
-      )
-      console.log('✅ GitHub repo created:', githubUrl)
-    } catch (e) {
-      console.error('GitHub creation failed, continuing...', e)
+    if (genOptions.codePrototype && Object.keys(codeFiles).length > 0) {
+      try {
+        githubUrl = await createGitHubRepo(
+          buildRequest.profiles?.username || 'user',
+          projectSlug,
+          codeFiles,
+          buildRequest.short_description
+        )
+        console.log('✅ GitHub repo created:', githubUrl)
+      } catch (e) {
+        console.error('GitHub creation failed, continuing...', e)
+      }
     }
 
     // Generate preview URL (would be deployed to your hosting platform)
@@ -338,10 +409,11 @@ Include realistic mock data and full interactivity.
       }
     )
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Project generation error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       {
         status: 500,
         headers: {

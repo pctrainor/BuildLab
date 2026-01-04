@@ -25,15 +25,15 @@ import Markdown from 'react-markdown'
 interface GeneratedProject {
   id: string
   project_slug: string
-  market_research: string
-  project_charter: string
-  prd: string
-  tech_spec: string
-  code_files: Record<string, string>
-  preview_url: string
-  github_url: string
+  market_research: string | null
+  project_charter: string | null
+  prd: string | null
+  tech_spec: string | null
+  code_files: Record<string, string> | null | unknown
+  preview_url: string | null
+  github_url: string | null
   status: 'pending' | 'processing' | 'completed' | 'failed'
-  generated_at: string
+  generated_at: string | null
   build_request: {
     title: string
     short_description: string
@@ -68,8 +68,8 @@ export function GeneratedProjectPage() {
 
       if (error) {
         console.error('Error loading project:', error)
-      } else {
-        setProject(data)
+      } else if (data) {
+        setProject(data as unknown as GeneratedProject)
       }
       setLoading(false)
     }
@@ -107,6 +107,7 @@ export function GeneratedProjectPage() {
       
       // Poll for completion
       const pollInterval = setInterval(async () => {
+        if (!projectSlug) return
         const { data } = await supabase
           .from('generated_projects')
           .select('status')

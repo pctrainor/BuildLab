@@ -17,7 +17,7 @@ export function CampaignsPage() {
       setLoading(true)
       let query = supabase
         .from('campaigns')
-        .select('*, profiles(*)')
+        .select('*, profiles!campaigns_creator_id_fkey(*)')
         .order('created_at', { ascending: false })
 
       if (filter !== 'all') {
@@ -25,7 +25,7 @@ export function CampaignsPage() {
       }
 
       const { data } = await query.limit(50)
-      setCampaigns((data as CampaignWithProfile[]) || [])
+      setCampaigns((data as unknown as CampaignWithProfile[]) || [])
       setLoading(false)
     }
     loadCampaigns()
@@ -220,7 +220,7 @@ export function CampaignsPage() {
                   <div className="text-slate-500 text-xs">Deadline</div>
                 </div>
                 <div>
-                  <div className="text-white font-semibold">{campaign.entry_fee > 0 ? `$${campaign.entry_fee}` : 'Free'}</div>
+                  <div className="text-white font-semibold">{(campaign.entry_fee || 0) > 0 ? `$${campaign.entry_fee}` : 'Free'}</div>
                   <div className="text-slate-500 text-xs">Entry</div>
                 </div>
               </div>

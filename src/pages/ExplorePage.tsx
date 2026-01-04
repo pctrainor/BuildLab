@@ -374,7 +374,7 @@ export function ExplorePage() {
                   
                   {/* Boost Amount */}
                   <div className="col-span-1 text-center">
-                    {request.boost_amount > 0 ? (
+                    {(request.boost_amount || 0) > 0 ? (
                       <span className="text-yellow-400 font-semibold text-sm">${request.boost_amount}</span>
                     ) : (
                       <span className="text-slate-600">-</span>
@@ -461,7 +461,7 @@ export function ExplorePage() {
                           <span>{request.vote_count}</span>
                         </button>
                         
-                        {request.boost_amount > 0 && (
+                        {(request.boost_amount || 0) > 0 && (
                           <span className="flex items-center gap-1 text-yellow-400 text-xs">
                             <Flame size={12} />
                             ${request.boost_amount}
@@ -501,7 +501,7 @@ export function ExplorePage() {
                   <span className="px-3 py-1 bg-slate-700/50 text-slate-300 text-xs rounded-full capitalize">
                     {request.category}
                   </span>
-                  {request.boost_amount > 0 && (
+                  {(request.boost_amount || 0) > 0 && (
                     <span className="flex items-center gap-1 px-3 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">
                       <Flame size={12} />
                       <span>${request.boost_amount} boosted</span>
