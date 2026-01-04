@@ -12,7 +12,6 @@ import {
   CheckCircle2, 
   Github, 
   FileText, 
-  Eye,
   Rocket
 } from 'lucide-react'
 
@@ -328,16 +327,6 @@ export function DashboardPage() {
                             <Sparkles size={12} />
                             Pending Generation
                           </span>
-                        )}
-                        
-                        {request.generated_project?.project_slug && (
-                          <Link 
-                            to={`/demo/${request.generated_project.project_slug}`}
-                            className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-                          >
-                            <Eye size={12} />
-                            Preview
-                          </Link>
                         )}
                         
                         {request.generated_project?.github_url && (

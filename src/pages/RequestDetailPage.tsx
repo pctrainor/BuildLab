@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../lib/auth'
 import type { BuildRequestWithProfile, CommentWithProfile } from '../lib/database.types'
-import { ChevronUp, Check } from 'lucide-react'
+import { ChevronUp, Check, ClipboardList } from 'lucide-react'
 import { ShareButtons } from '../components/ShareButtons'
 import { useToast } from '../components/Toast'
 
@@ -16,6 +16,7 @@ export function RequestDetailPage() {
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [hasVoted, setHasVoted] = useState(false)
+  const [copiedContext, setCopiedContext] = useState(false)
   const commentsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -99,6 +100,53 @@ export function RequestDetailPage() {
       .single()
     
     setRequest(data as BuildRequestWithProfile)
+  }
+
+  // Copy all project context as JSON (includes all available info)
+  const copyAllContext = async () => {
+    if (!request) return
+
+    // Fetch generated project data if available
+    const { data: generatedProject } = await supabase
+      .from('generated_projects')
+      .select('*')
+      .eq('build_request_id', request.id)
+      .maybeSingle()
+
+    const contextData = {
+      project: {
+        id: request.id,
+        title: request.title,
+        short_description: request.short_description,
+        detailed_description: request.detailed_description,
+        category: request.category,
+        target_audience: request.target_audience,
+        features: request.features,
+        design_preferences: request.design_preferences,
+        examples_inspiration: request.examples_inspiration,
+        status: request.status,
+        vote_count: request.vote_count,
+        created_at: request.created_at,
+      },
+      creator: {
+        username: request.profiles?.username,
+        display_name: request.profiles?.display_name,
+      },
+      generated_content: generatedProject ? {
+        market_research: generatedProject.market_research || null,
+        project_charter: generatedProject.project_charter || null,
+        prd: generatedProject.prd || null,
+        tech_spec: generatedProject.tech_spec || null,
+        code_files: generatedProject.code_files || {},
+        github_url: generatedProject.github_url,
+        status: generatedProject.status,
+      } : null,
+    }
+
+    await navigator.clipboard.writeText(JSON.stringify(contextData, null, 2))
+    setCopiedContext(true)
+    showToast('All project context copied to clipboard!', 'success')
+    setTimeout(() => setCopiedContext(false), 2000)
   }
 
   const handleSubmitComment = async (e: React.FormEvent) => {
@@ -423,6 +471,19 @@ export function RequestDetailPage() {
               description={request.detailed_description}
               url={window.location.href}
             />
+            
+            {/* Copy All Context Button */}
+            <button
+              onClick={copyAllContext}
+              className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 text-cyan-400 rounded-xl transition-colors border border-cyan-500/30"
+              title="Copy all project context as JSON"
+            >
+              {copiedContext ? <Check size={18} /> : <ClipboardList size={18} />}
+              <span>{copiedContext ? 'Copied!' : 'Copy All Context'}</span>
+            </button>
+            <p className="text-xs text-slate-500 mt-2 text-center">
+              Copy all project data including documents & code as JSON
+            </p>
           </div>
         </div>
       </div>

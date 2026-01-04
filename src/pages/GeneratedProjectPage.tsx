@@ -6,7 +6,6 @@ import {
   BarChart3, 
   Code, 
   Github, 
-  ExternalLink, 
   Download, 
   Loader2, 
   CheckCircle2, 
@@ -18,7 +17,8 @@ import {
   Share2,
   Copy,
   Check,
-  Sparkles
+  Sparkles,
+  ClipboardList
 } from 'lucide-react'
 import { useToast } from '../components/Toast'
 import Markdown from 'react-markdown'
@@ -54,6 +54,7 @@ export function GeneratedProjectPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [copied, setCopied] = useState(false)
+  const [copiedContext, setCopiedContext] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatingSection, setGeneratingSection] = useState<SectionType | null>(null)
 
@@ -91,6 +92,35 @@ export function GeneratedProjectPage() {
     setCopied(true)
     showToast('Link copied to clipboard!', 'success')
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Copy all project context as JSON
+  const copyAllContext = () => {
+    if (!project) return
+
+    const contextData = {
+      project: {
+        title: project.build_request?.title || '',
+        slug: project.project_slug,
+        description: project.build_request?.short_description || '',
+        category: project.build_request?.category || '',
+        status: project.status,
+        generated_at: project.generated_at,
+        github_url: project.github_url,
+      },
+      documents: {
+        market_research: project.market_research || null,
+        project_charter: project.project_charter || null,
+        prd: project.prd || null,
+        tech_spec: project.tech_spec || null,
+      },
+      code_files: project.code_files || {},
+    }
+
+    navigator.clipboard.writeText(JSON.stringify(contextData, null, 2))
+    setCopiedContext(true)
+    showToast('All project context copied to clipboard!', 'success')
+    setTimeout(() => setCopiedContext(false), 2000)
   }
 
   const downloadCode = () => {
@@ -328,23 +358,21 @@ export function GeneratedProjectPage() {
 
           <div className="flex flex-wrap gap-3">
             <button
+              onClick={copyAllContext}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 text-cyan-400 rounded-lg transition-colors border border-cyan-500/30"
+              title="Copy all project context as JSON"
+            >
+              {copiedContext ? <Check size={18} /> : <ClipboardList size={18} />}
+              <span>{copiedContext ? 'Copied!' : 'Copy All Context'}</span>
+            </button>
+            
+            <button
               onClick={copyShareLink}
               className="flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-white rounded-lg transition-colors"
             >
               {copied ? <Check size={18} /> : <Share2 size={18} />}
               <span>{copied ? 'Copied!' : 'Share'}</span>
             </button>
-            
-            {/* Live Preview - links to our internal demo page */}
-            {project.code_files && Object.keys(project.code_files).length > 0 && (
-              <Link
-                to={`/demo/${project.project_slug}`}
-                className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors border border-cyan-500/30"
-              >
-                <ExternalLink size={18} />
-                <span>Live Preview</span>
-              </Link>
-            )}
             
             {project.github_url && (
               <a
@@ -469,36 +497,6 @@ export function GeneratedProjectPage() {
               </div>
             </div>
 
-            {/* Live Preview - use internal demo page */}
-            {project.code_files && Object.keys(project.code_files).length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-xl font-semibold text-white mb-4">Live Preview</h3>
-                <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 border-b border-slate-700">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-500" />
-                      <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                      <div className="w-3 h-3 rounded-full bg-green-500" />
-                    </div>
-                    <span className="text-slate-400 text-sm ml-2">buildlab.dev/demo/{project.project_slug}</span>
-                  </div>
-                  <div className="w-full h-[500px] bg-slate-900 flex items-center justify-center">
-                    <Link
-                      to={`/demo/${project.project_slug}`}
-                      className="flex flex-col items-center gap-4 text-center p-8"
-                    >
-                      <div className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-xl flex items-center justify-center">
-                        <ExternalLink className="w-8 h-8 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-white font-semibold text-lg">Open Live Preview</p>
-                        <p className="text-slate-400 text-sm mt-1">View your generated project in action</p>
-                      </div>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
