@@ -10,6 +10,12 @@ const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 const openaiKey = Deno.env.get('OPENAI_API_KEY')!
 const githubToken = Deno.env.get('GITHUB_TOKEN')!
 
+// AWS Configuration
+const awsAccessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID')!
+const awsSecretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY')!
+const awsRegion = Deno.env.get('AWS_REGION') || 'us-east-1'
+const s3Bucket = 'buildlab-previews'
+
 interface ProjectRequest {
   build_request_id: string
   user_id: string
@@ -257,6 +263,118 @@ async function callAgent(systemPrompt: string, userPrompt: string, isJson = fals
   return data.choices[0].message.content
 }
 
+// AWS Signature V4 Helper Functions
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function sha256(message: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(message)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return toHex(hash)
+}
+
+async function hmacSha256(key: ArrayBuffer | Uint8Array, message: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder()
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    key,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  return await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(message))
+}
+
+async function getSignatureKey(key: string, dateStamp: string, region: string, service: string): Promise<ArrayBuffer> {
+  const kDate = await hmacSha256(new TextEncoder().encode('AWS4' + key), dateStamp)
+  const kRegion = await hmacSha256(kDate, region)
+  const kService = await hmacSha256(kRegion, service)
+  const kSigning = await hmacSha256(kService, 'aws4_request')
+  return kSigning
+}
+
+// Upload files to S3
+async function uploadToS3(
+  projectSlug: string,
+  files: Record<string, string>
+): Promise<string> {
+  const baseUrl = `http://${s3Bucket}.s3-website-${awsRegion}.amazonaws.com/${projectSlug}`
+  
+  for (const [filePath, content] of Object.entries(files)) {
+    const key = `${projectSlug}/${filePath}`
+    const endpoint = `https://${s3Bucket}.s3.${awsRegion}.amazonaws.com/${key}`
+    
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = amzDate.substring(0, 8)
+    
+    // Determine content type
+    let contentType = 'text/plain'
+    if (filePath.endsWith('.html')) contentType = 'text/html'
+    else if (filePath.endsWith('.css')) contentType = 'text/css'
+    else if (filePath.endsWith('.js')) contentType = 'application/javascript'
+    else if (filePath.endsWith('.json')) contentType = 'application/json'
+    
+    const encoder = new TextEncoder()
+    const body = encoder.encode(content)
+    const payloadHash = await sha256(content)
+    
+    // Create canonical request
+    const method = 'PUT'
+    const canonicalUri = '/' + key
+    const canonicalQueryString = ''
+    const canonicalHeaders = 
+      `content-type:${contentType}\n` +
+      `host:${s3Bucket}.s3.${awsRegion}.amazonaws.com\n` +
+      `x-amz-content-sha256:${payloadHash}\n` +
+      `x-amz-date:${amzDate}\n`
+    const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date'
+    
+    const canonicalRequest = 
+      `${method}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`
+    
+    // Create string to sign
+    const algorithm = 'AWS4-HMAC-SHA256'
+    const credentialScope = `${dateStamp}/${awsRegion}/s3/aws4_request`
+    const stringToSign = 
+      `${algorithm}\n${amzDate}\n${credentialScope}\n${await sha256(canonicalRequest)}`
+    
+    // Calculate signature
+    const signingKey = await getSignatureKey(awsSecretAccessKey, dateStamp, awsRegion, 's3')
+    const signature = toHex(await hmacSha256(signingKey, stringToSign))
+    
+    // Create authorization header
+    const authorizationHeader = 
+      `${algorithm} Credential=${awsAccessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+    
+    // Upload file
+    const response = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': amzDate,
+        'Authorization': authorizationHeader,
+      },
+      body: body,
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`Failed to upload ${filePath}:`, errorText)
+      throw new Error(`Failed to upload ${filePath} to S3`)
+    }
+    
+    console.log(`✅ Uploaded ${filePath} to S3`)
+  }
+  
+  return baseUrl
+}
+
 // Create GitHub repository
 async function createGitHubRepo(
   username: string,
@@ -493,7 +611,18 @@ Include realistic mock data and full interactivity.
 
     // Create GitHub repo (only if code was generated)
     let githubUrl = ''
+    let previewUrl: string | null = null
+    
     if (genOptions.codePrototype && Object.keys(codeFiles).length > 0) {
+      // Upload to S3 for live preview
+      try {
+        previewUrl = await uploadToS3(projectSlug, codeFiles)
+        console.log('✅ S3 preview created:', previewUrl)
+      } catch (e) {
+        console.error('S3 upload failed, continuing...', e)
+      }
+      
+      // Also create GitHub repo
       try {
         githubUrl = await createGitHubRepo(
           buildRequest.profiles?.username || 'user',
@@ -506,9 +635,6 @@ Include realistic mock data and full interactivity.
         console.error('GitHub creation failed, continuing...', e)
       }
     }
-
-    // Generate preview URL only if code was generated
-    const previewUrl = genOptions.codePrototype ? `https://preview.buildlab.app/${projectSlug}` : null
 
     // Store generated content
     const { error: insertError } = await supabaseAdmin
