@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import type { Profile, BuildRequestWithProfile } from '../lib/database.types'
+import type { BuildRequestWithProfile } from '../lib/database.types'
 import { Trophy, Star, ChevronLeft, ChevronRight, Flame, DollarSign, TrendingUp, Calendar, Zap } from 'lucide-react'
 
 // Countdown Timer Logic
@@ -49,10 +49,10 @@ function calculateTimeLeft(targetDate: Date): TimeLeft {
 }
 
 export function CompetePage() {
-  const [topCreators, setTopCreators] = useState<Profile[]>([])
+  const [topProjects, setTopProjects] = useState<BuildRequestWithProfile[]>([])
   const [pastWinners, setPastWinners] = useState<BuildRequestWithProfile[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'creators' | 'winners'>('creators')
+  const [tab, setTab] = useState<'projects' | 'creators' | 'winners'>('projects')
   const [targetDate] = useState(() => getNextThursday8PMCST())
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => calculateTimeLeft(targetDate))
   const [currentMonth, setCurrentMonth] = useState(() => new Date())
@@ -66,14 +66,16 @@ export function CompetePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const { data: creators } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('total_votes_received', { ascending: false })
+      // Fetch top projects by vote count (this week's contenders)
+      const { data: projects } = await supabase
+        .from('build_requests')
+        .select('*, profiles(*)')
+        .order('vote_count', { ascending: false })
         .limit(10)
       
-      setTopCreators(creators || [])
+      setTopProjects((projects as BuildRequestWithProfile[]) || [])
 
+      // Fetch past winners
       const { data: winners } = await supabase
         .from('build_requests')
         .select('*, profiles(*)')
@@ -178,38 +180,46 @@ export function CompetePage() {
 
       {/* Main 3-Column Layout */}
       <div className="grid lg:grid-cols-12 gap-6">
-        {/* Left Column - Top Creators */}
+        {/* Left Column - Top Projects */}
         <div className="lg:col-span-4">
           <div className="bg-slate-900/50 rounded-2xl border border-slate-700/50 overflow-hidden sticky top-20">
-            <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-yellow-500/10 to-amber-500/10">
+            <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-cyan-500/10 to-purple-500/10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Trophy className="text-yellow-400" size={20} />
-                  <h2 className="text-lg font-bold text-white">Top Creators</h2>
+                  <TrendingUp className="text-cyan-400" size={20} />
+                  <h2 className="text-lg font-bold text-white">Top Projects</h2>
                 </div>
                 <Link to="/leaderboard" className="text-cyan-400 text-sm hover:underline">
-                  View Rankings →
+                  View All →
                 </Link>
               </div>
+              <p className="text-xs text-slate-400 mt-1">Projects competing this week</p>
             </div>
             
             <div className="divide-y divide-slate-800/50">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="p-4 animate-pulse">
-                    <div className="h-10 bg-slate-800 rounded"></div>
+                    <div className="h-12 bg-slate-800 rounded"></div>
                   </div>
                 ))
+              ) : topProjects.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-slate-400 text-sm">No projects yet this week</p>
+                  <Link to="/submit" className="text-cyan-400 text-sm hover:underline mt-2 inline-block">
+                    Be the first to submit →
+                  </Link>
+                </div>
               ) : (
-                topCreators.slice(0, 5).map((creator, index) => (
+                topProjects.slice(0, 7).map((project, index) => (
                   <Link 
-                    key={creator.id} 
-                    to={`/u/${creator.username}`}
+                    key={project.id} 
+                    to={`/request/${project.id}`}
                     className="block p-3 hover:bg-slate-800/30 transition-colors"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       {/* Rank */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5 ${
                         index === 0
                           ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500'
                           : index === 1
@@ -221,27 +231,41 @@ export function CompetePage() {
                         {index + 1}
                       </div>
 
-                      {/* Avatar */}
-                      <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                        {creator.username?.[0]?.toUpperCase()}
-                      </div>
-
-                      {/* Info */}
+                      {/* Project Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-white text-sm truncate">@{creator.username}</div>
+                        <div className="font-medium text-white text-sm truncate">{project.title}</div>
+                        <div className="text-xs text-slate-500 truncate">
+                          by @{project.profiles?.username || 'anonymous'}
+                        </div>
                       </div>
 
-                      {/* Stats */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <div className="text-right">
-                          <div className="text-sm font-bold text-cyan-400">{creator.total_votes_received || 0}</div>
-                          <div className="text-xs text-slate-500">votes</div>
+                      {/* Vote Count */}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className={`text-sm font-bold ${
+                          index === 0 ? 'text-yellow-400' : 'text-cyan-400'
+                        }`}>
+                          {project.vote_count || 0}
                         </div>
+                        <Star size={12} className={index === 0 ? 'text-yellow-400' : 'text-slate-500'} />
                       </div>
                     </div>
                   </Link>
                 ))
               )}
+            </div>
+            
+            {/* Top Creators Link */}
+            <div className="p-3 border-t border-slate-800/50 bg-slate-900/50">
+              <Link 
+                to="/leaderboard" 
+                className="flex items-center justify-between text-sm text-slate-400 hover:text-white transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Trophy size={14} className="text-yellow-400" />
+                  <span>View Top Creators</span>
+                </div>
+                <span>→</span>
+              </Link>
             </div>
           </div>
         </div>
