@@ -67,7 +67,17 @@ export function DashboardPage() {
     }
     
     loadData()
-  }, [user])
+    
+    // Poll for updates every 10 seconds if there are processing generations
+    const interval = setInterval(() => {
+      const hasProcessing = requests.some(r => r.generation_status === 'processing')
+      if (hasProcessing) {
+        loadData()
+      }
+    }, 10000)
+    
+    return () => clearInterval(interval)
+  }, [user, requests])
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -108,19 +118,32 @@ export function DashboardPage() {
 
       if (response.ok) {
         showToast('AI generation started! This may take a few minutes.', 'success')
-        // Update local state to show processing
+        setModalOpen(false)
+        // Update local state to show processing immediately
         setRequests(prev => prev.map(r => 
           r.id === selectedRequest.id ? { ...r, generation_status: 'processing' } : r
         ))
+        // Reload data after 30 seconds to check completion
+        setTimeout(async () => {
+          if (!user) return
+          const { data: requestsData } = await supabase
+            .from('build_requests')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+          if (requestsData) setRequests(requestsData)
+        }, 30000)
       } else {
         const error = await response.json()
+        console.error('Generation error:', error)
         showToast(error.error || 'Failed to start generation. Please try again.', 'error')
       }
-    } catch {
+    } catch (err) {
+      console.error('Generation request failed:', err)
       showToast('An error occurred. Please try again.', 'error')
+      setModalOpen(false)
     } finally {
       setGeneratingId(null)
-      setModalOpen(false)
     }
   }
 
