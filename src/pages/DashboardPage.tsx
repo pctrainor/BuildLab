@@ -247,7 +247,7 @@ export function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-3 gap-6 mb-8">
         <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50 text-center">
           <div className="text-4xl font-bold text-white mb-2">{stats.totalSubmissions}</div>
           <div className="text-slate-400">Submissions</div>
@@ -260,6 +260,43 @@ export function DashboardPage() {
           <div className="text-4xl font-bold text-yellow-400 mb-2">{stats.wins}</div>
           <div className="text-slate-400">Wins</div>
         </div>
+      </div>
+
+      {/* GitHub Connection Status */}
+      <div className="mb-8">
+        {profile?.github_username ? (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 flex items-center gap-4">
+            <div className="p-2 bg-green-500/20 rounded-lg">
+              <Github className="w-6 h-6 text-green-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-green-400 font-medium">GitHub Connected</p>
+              <p className="text-slate-400 text-sm">
+                Logged in as <span className="text-white font-medium">@{profile.github_username}</span> — 
+                Your generated projects will automatically create GitHub repos!
+              </p>
+            </div>
+            <CheckCircle2 className="w-6 h-6 text-green-400" />
+          </div>
+        ) : (
+          <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 flex items-center gap-4">
+            <div className="p-2 bg-slate-700/50 rounded-lg">
+              <Github className="w-6 h-6 text-slate-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-slate-300 font-medium">Connect GitHub for Auto Repos</p>
+              <p className="text-slate-500 text-sm">
+                Sign in with GitHub to automatically create repos when your projects are generated
+              </p>
+            </div>
+            <Link
+              to="/auth"
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Connect
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Submissions */}

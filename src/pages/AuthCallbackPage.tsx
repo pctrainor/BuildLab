@@ -22,32 +22,50 @@ export function AuthCallbackPage() {
         }
 
         if (data.session) {
+          const user = data.session.user
+          const providerToken = data.session.provider_token
+          const provider = user.app_metadata?.provider
+
           // Check if profile exists, if not create one
-          const { data: profile, error: profileError } = await supabase
+          const { data: profile } = await supabase
             .from('profiles')
             .select('id, username')
-            .eq('id', data.session.user.id)
+            .eq('id', user.id)
             .single()
 
-          if (!profile && !profileError) {
-            // Create profile from OAuth data
-            const user = data.session.user
-            const username = user.user_metadata?.user_name || 
-                           user.user_metadata?.preferred_username ||
-                           user.email?.split('@')[0] ||
-                           `user_${user.id.slice(0, 8)}`
-            
-            const displayName = user.user_metadata?.full_name || 
-                              user.user_metadata?.name || 
-                              username
+          // Build profile update/insert data
+          const username = user.user_metadata?.user_name || 
+                         user.user_metadata?.preferred_username ||
+                         user.email?.split('@')[0] ||
+                         `user_${user.id.slice(0, 8)}`
+          
+          const displayName = user.user_metadata?.full_name || 
+                            user.user_metadata?.name || 
+                            username
 
+          // If logged in with GitHub, store the access token for repo creation
+          const githubData = provider === 'github' && providerToken ? {
+            github_access_token: providerToken,
+            github_username: user.user_metadata?.user_name || user.user_metadata?.preferred_username,
+            github_connected_at: new Date().toISOString()
+          } : {}
+
+          if (!profile) {
+            // Create new profile with GitHub token if applicable
             await supabase.from('profiles').insert({
               id: user.id,
               username: username.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
               display_name: displayName,
               avatar_url: user.user_metadata?.avatar_url || null,
-              bio: null
+              bio: null,
+              ...githubData
             })
+          } else if (provider === 'github' && providerToken) {
+            // Update existing profile with GitHub token
+            await supabase.from('profiles').update({
+              ...githubData,
+              avatar_url: user.user_metadata?.avatar_url || undefined
+            }).eq('id', user.id)
           }
 
           await fetchProfile()

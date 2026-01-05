@@ -468,6 +468,9 @@ export type Database = {
           created_at: string | null
           display_name: string | null
           extra_submissions: number | null
+          github_access_token: string | null
+          github_username: string | null
+          github_connected_at: string | null
           id: string
           is_builder: boolean | null
           is_verified: boolean | null
@@ -489,6 +492,9 @@ export type Database = {
           created_at?: string | null
           display_name?: string | null
           extra_submissions?: number | null
+          github_access_token?: string | null
+          github_username?: string | null
+          github_connected_at?: string | null
           id: string
           is_builder?: boolean | null
           is_verified?: boolean | null
@@ -510,6 +516,9 @@ export type Database = {
           created_at?: string | null
           display_name?: string | null
           extra_submissions?: number | null
+          github_access_token?: string | null
+          github_username?: string | null
+          github_connected_at?: string | null
           id?: string
           is_builder?: boolean | null
           is_verified?: boolean | null
