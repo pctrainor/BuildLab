@@ -178,9 +178,9 @@ export function ExplorePage() {
   ]
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-12 overflow-x-hidden">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Explore Ideas</h1>
           <p className="text-slate-400">
@@ -200,8 +200,8 @@ export function ExplorePage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex flex-col gap-3 sm:gap-4 mb-8 overflow-x-hidden">
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 touch-pan-x">
           {CATEGORIES.map(cat => {
             const Icon = cat.icon
             return (
@@ -221,7 +221,7 @@ export function ExplorePage() {
           })}
         </div>
         
-        <div className="flex gap-2 ml-auto">
+        <div className="flex gap-2 ml-auto flex-shrink-0">
           {/* View Toggle */}
           <div className="flex bg-slate-800 rounded-lg border border-slate-700 p-1">
             <button

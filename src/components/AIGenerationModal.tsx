@@ -104,7 +104,7 @@ export function AIGenerationModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -112,7 +112,7 @@ export function AIGenerationModal({
       />
       
       {/* Modal */}
-      <div className="relative bg-slate-900 rounded-2xl border border-slate-700/50 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-slate-900 rounded-2xl border border-slate-700/50 w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden touch-pan-y">
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 border-b border-slate-700/50 p-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -144,7 +144,7 @@ export function AIGenerationModal({
           {/* Focus Area */}
           <div>
             <label className="block text-white font-medium mb-3">Focus Area</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
               {FOCUS_AREAS.map(area => (
                 <button
                   key={area.id}
@@ -224,25 +224,25 @@ export function AIGenerationModal({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700/50 p-6 flex items-center justify-between">
-          <div className="text-slate-400 text-sm">
+        <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700/50 p-4 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-slate-400 text-sm text-center sm:text-left">
             {selectedCount === 0 ? (
               <span className="text-yellow-400">Select at least one report type</span>
             ) : (
               <span>Estimated time: ~{selectedCount * 30} seconds</span>
             )}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 w-full sm:w-auto">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
+              className="flex-1 sm:flex-initial px-4 py-2 text-slate-400 hover:text-white transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleGenerate}
               disabled={generating || selectedCount === 0}
-              className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="flex-1 sm:flex-initial px-6 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-medium rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {generating ? (
                 <>

@@ -226,7 +226,7 @@ export function RequestDetailPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto px-4 py-12 overflow-x-hidden">
         <div className="animate-pulse">
           <div className="h-8 bg-slate-700 rounded w-3/4 mb-4"></div>
           <div className="h-4 bg-slate-700 rounded w-1/2 mb-8"></div>
@@ -238,7 +238,7 @@ export function RequestDetailPage() {
 
   if (!request) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+      <div className="max-w-4xl mx-auto px-4 py-12 text-center overflow-x-hidden">
         <h1 className="text-2xl font-bold text-white mb-4">Request Not Found</h1>
         <Link to="/explore" className="text-cyan-400 hover:underline">
           Back to Explore
@@ -250,17 +250,17 @@ export function RequestDetailPage() {
   const features = Array.isArray(request.features) ? request.features : []
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="grid lg:grid-cols-3 gap-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 overflow-x-hidden">
+      <div className="grid lg:grid-cols-3 gap-6 sm:gap-8">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
           {/* Header */}
           <div>
-            <div className="flex items-center gap-3 mb-4">
-              <span className="px-3 py-1 bg-slate-700/50 text-slate-300 text-sm rounded-full capitalize">
+            <div className="flex items-center gap-2 sm:gap-3 mb-4 flex-wrap">
+              <span className="px-3 py-1 bg-slate-700/50 text-slate-300 text-xs sm:text-sm rounded-full capitalize">
                 {request.category}
               </span>
-              <span className={`px-3 py-1 text-sm rounded-full ${
+              <span className={`px-3 py-1 text-xs sm:text-sm rounded-full ${
                 request.status === 'winner'
                   ? 'bg-yellow-500/20 text-yellow-400'
                   : request.status === 'in_progress'
@@ -271,7 +271,7 @@ export function RequestDetailPage() {
               </span>
             </div>
             
-            <h1 className="text-3xl font-bold text-white mb-4">{request.title}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4">{request.title}</h1>
             
             {/* Project GIF */}
             {request.gif_url && (

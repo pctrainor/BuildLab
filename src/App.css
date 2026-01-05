@@ -1,8 +1,21 @@
 #root {
-  max-width: 1280px;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 2rem;
   text-align: center;
+  overflow-x: hidden;
+}
+
+@media (min-width: 769px) {
+  #root {
+    max-width: 1280px;
+    padding: 2rem;
+  }
+}
+
+@media (max-width: 768px) {
+  #root {
+    padding: 0;
+  }
 }
 
 .logo {

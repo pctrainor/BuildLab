@@ -119,30 +119,30 @@ export function CompetePage() {
   const thursdays = getThursdaysInMonth()
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-4 py-6 overflow-x-hidden">
       {/* Hero Section with Countdown */}
-      <div className="relative bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 rounded-3xl p-8 mb-8 border border-purple-500/20 overflow-hidden">
+      <div className="relative bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 rounded-3xl p-6 sm:p-8 mb-8 border border-purple-500/20 overflow-hidden">
         {/* Background glow effects */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl" />
         
         <div className="relative z-10">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-6">
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Flame className="text-orange-400" size={28} />
                 <span className="text-orange-400 font-semibold text-lg">Weekly Competition</span>
               </div>
-              <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">
                 Submit & Compete for <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">Victory</span>
               </h1>
-              <p className="text-slate-400 text-lg max-w-xl">
+              <p className="text-sm sm:text-base text-slate-400 max-w-xl">
                 Every Thursday at 8PM CST, votes are tallied and winners are crowned. Submit your best ideas and rise to the top!
               </p>
             </div>
             
             {/* Countdown Timer */}
-            <div className="bg-slate-900/80 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50">
+            <div className="bg-slate-900/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 border border-slate-700/50 w-full lg:w-auto">
               <div className="text-center mb-4">
                 <div className="text-slate-400 text-sm mb-1">Competition Closes In</div>
               </div>

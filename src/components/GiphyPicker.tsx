@@ -142,10 +142,10 @@ export function GiphyPicker({ selectedGif, onSelect }: GiphyPickerProps) {
         Project GIF <span className="text-slate-500">(optional)</span>
       </label>
       
-      <div className="bg-slate-800 border border-slate-600 rounded-xl overflow-hidden">
+      <div className="bg-slate-800 border border-slate-600 rounded-xl overflow-hidden max-w-full">
         {/* Header */}
-        <div className="p-3 border-b border-slate-700 flex items-center gap-3">
-          <div className="relative flex-1">
+        <div className="p-3 border-b border-slate-700 flex items-center gap-2 sm:gap-3">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
             <input
               type="text"
@@ -159,14 +159,14 @@ export function GiphyPicker({ selectedGif, onSelect }: GiphyPickerProps) {
           <button
             type="button"
             onClick={() => setIsOpen(false)}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
+            className="p-2 text-slate-400 hover:text-white transition-colors flex-shrink-0"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* GIF Grid */}
-        <div className="p-3 max-h-64 overflow-y-auto">
+        <div className="p-3 max-h-64 overflow-y-auto overflow-x-hidden touch-pan-y">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="animate-spin text-cyan-400" size={24} />
@@ -176,7 +176,7 @@ export function GiphyPicker({ selectedGif, onSelect }: GiphyPickerProps) {
               {search ? 'No GIFs found' : 'Search for a GIF'}
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {gifs.map((gif) => (
                 <button
                   key={gif.id}

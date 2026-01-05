@@ -172,7 +172,7 @@ export function SubmitPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 overflow-x-hidden">
       {/* Submission Limit Banner */}
       {!submissionLimits.loading && (
         <div className={`mb-8 p-4 rounded-xl border ${
@@ -273,19 +273,18 @@ export function SubmitPage() {
       {(submissionLimits.loading || submissionLimits.canSubmit) && (
         <>
       {/* Header */}
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold text-white mb-4">Submit Your Build Request</h1>
-        <p className="text-slate-400">
+      <div className="text-center mb-8 sm:mb-12">
+        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 sm:mb-4">Submit Your Build Request</h1>
+        <p className="text-sm sm:text-base text-slate-400">
           Provide detailed specs for your project. The more detail, the better!
         </p>
       </div>
 
       {/* Progress Steps */}
-      <div className="flex items-center justify-center gap-4 mb-12">
+      <div className="flex items-center justify-center gap-2 sm:gap-4 mb-8 sm:mb-12 flex-wrap">
         {[1, 2, 3].map((s) => (
           <div key={s} className="flex items-center">
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all text-sm ${
                 step >= s
                   ? 'bg-gradient-to-r from-cyan-500 to-purple-600 text-white'
                   : 'bg-slate-800 text-slate-500'
@@ -294,7 +293,7 @@ export function SubmitPage() {
               {s}
             </div>
             {s < 3 && (
-              <div className={`w-20 h-1 mx-2 rounded ${step > s ? 'bg-cyan-500' : 'bg-slate-700'}`} />
+              <div className={`w-12 sm:w-20 h-1 mx-1 sm:mx-2 rounded ${step > s ? 'bg-cyan-500' : 'bg-slate-700'}`} />
             )}
           </div>
         ))}
