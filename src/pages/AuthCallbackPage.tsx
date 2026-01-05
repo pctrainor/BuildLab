@@ -12,6 +12,18 @@ export function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
+        // IMPORTANT: Exchange the code from URL for a session
+        // This is critical for getting the provider_token
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const refreshToken = hashParams.get('refresh_token')
+        
+        console.log('🔍 URL Hash Check:', {
+          hasHash: window.location.hash.length > 0,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken
+        })
+
         // Get the session from URL hash (Supabase OAuth redirect)
         const { data, error } = await supabase.auth.getSession()
         
@@ -30,7 +42,9 @@ export function AuthCallbackPage() {
             provider,
             hasProviderToken: !!providerToken,
             providerToken: providerToken ? 'TOKEN_EXISTS' : 'NO_TOKEN',
-            user_metadata: user.user_metadata
+            providerTokenLength: providerToken ? providerToken.length : 0,
+            user_metadata: user.user_metadata,
+            app_metadata: user.app_metadata
           })
 
           // Check if profile exists, if not create one
