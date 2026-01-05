@@ -14,6 +14,8 @@ interface AuthState {
   initialize: () => Promise<void>
   signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null }>
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signInWithGitHub: () => Promise<{ error: Error | null }>
+  signInWithGoogle: () => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>
   fetchProfile: () => Promise<void>
@@ -158,6 +160,59 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { error: null }
     } catch (error) {
       console.error('Auth: Unexpected sign in error:', error)
+      return { error: error as Error }
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  signInWithGitHub: async () => {
+    set({ loading: true })
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          scopes: 'repo user:email'
+        }
+      })
+      
+      if (error) {
+        console.error('Auth: GitHub sign in error:', error.message)
+        return { error }
+      }
+      
+      return { error: null }
+    } catch (error) {
+      console.error('Auth: Unexpected GitHub sign in error:', error)
+      return { error: error as Error }
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  signInWithGoogle: async () => {
+    set({ loading: true })
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent'
+          }
+        }
+      })
+      
+      if (error) {
+        console.error('Auth: Google sign in error:', error.message)
+        return { error }
+      }
+      
+      return { error: null }
+    } catch (error) {
+      console.error('Auth: Unexpected Google sign in error:', error)
       return { error: error as Error }
     } finally {
       set({ loading: false })

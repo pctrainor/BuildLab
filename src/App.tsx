@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { ScrollToTop } from './components/ScrollToTop'
 import { HomePage } from './pages/HomePage'
 import { AuthPage } from './pages/AuthPage'
+import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { CheckEmailPage } from './pages/CheckEmailPage'
 import { EmailConfirmedPage } from './pages/EmailConfirmedPage'
 import { ExplorePage } from './pages/ExplorePage'
@@ -42,6 +43,7 @@ function App() {
       <ScrollToTop />
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/check-email" element={<CheckEmailPage />} />
         <Route path="/email-confirmed" element={<EmailConfirmedPage />} />
         <Route path="/demo/:projectSlug" element={<DemoPage />} />
