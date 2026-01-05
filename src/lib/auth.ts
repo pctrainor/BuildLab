@@ -62,19 +62,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // CRITICAL: Capture GitHub provider token during SIGNED_IN event
           if (event === 'SIGNED_IN' && session.provider_token) {
             const provider = session.user.app_metadata?.provider
+            const providers = session.user.app_metadata?.providers || []
+            const hasGithub = providers.includes('github') || provider === 'github'
             
             console.log('🔥 SIGNED_IN Event - Provider Token Available!', {
               provider,
+              providers,
+              hasGithub,
               hasToken: !!session.provider_token,
               tokenLength: session.provider_token?.length,
               event
             })
             
-            // If this is a GitHub login, save the token immediately
-            if (provider === 'github') {
-              const githubUsername = session.user.user_metadata?.user_name || session.user.user_metadata?.preferred_username
+            // If GitHub is one of the linked providers, save the token
+            if (hasGithub) {
+              const githubUsername = session.user.user_metadata?.user_name || 
+                                    session.user.user_metadata?.preferred_username ||
+                                    session.user.user_metadata?.name
               
-              console.log('💾 Saving GitHub token to profile...')
+              console.log('💾 Saving GitHub token to profile...', { githubUsername })
               const { error: updateError } = await supabase
                 .from('profiles')
                 .update({
