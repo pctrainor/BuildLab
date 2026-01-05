@@ -883,7 +883,7 @@ async function createGitHubRepo(
   projectSlug: string,
   files: Record<string, string>,
   description: string
-): Promise<string> {
+): Promise<{ repoUrl: string; pagesUrl: string | null }> {
   const repoName = `buildlab-${projectSlug}`
   
   // Create repo using GitHub API with user's token
@@ -935,7 +935,38 @@ async function createGitHubRepo(
     }
   }
 
-  return repo.html_url
+  // Enable GitHub Pages
+  let pagesUrl: string | null = null
+  try {
+    const pagesResponse = await fetch(`https://api.github.com/repos/${repo.full_name}/pages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${userGithubToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'BuildLab-Generator',
+      },
+      body: JSON.stringify({
+        source: {
+          branch: 'main',
+          path: '/'
+        }
+      }),
+    })
+    
+    if (pagesResponse.ok) {
+      const pagesData = await pagesResponse.json()
+      pagesUrl = pagesData.html_url
+      console.log('✅ GitHub Pages enabled:', pagesUrl)
+    } else {
+      const error = await pagesResponse.text()
+      console.warn('⚠️ Could not enable GitHub Pages:', error)
+    }
+  } catch (e) {
+    console.warn('⚠️ GitHub Pages setup failed:', e)
+  }
+
+  return { repoUrl: repo.html_url, pagesUrl }
 }
 
 // Main handler
@@ -1224,15 +1255,21 @@ Include realistic mock data and full interactivity.
       
       // Create GitHub repo only if user has connected their GitHub account
       const userGithubToken = buildRequest.profiles?.github_access_token
+      let githubPagesUrl = null
       if (userGithubToken) {
         try {
-          githubUrl = await createGitHubRepo(
+          const result = await createGitHubRepo(
             userGithubToken,
             projectSlug,
             codeFiles,
             safeData.short_description || ''
           )
+          githubUrl = result.repoUrl
+          githubPagesUrl = result.pagesUrl
           console.log('✅ GitHub repo created:', githubUrl)
+          if (githubPagesUrl) {
+            console.log('✅ GitHub Pages URL:', githubPagesUrl)
+          }
         } catch (e) {
           console.error('GitHub creation failed, continuing...', e)
         }
@@ -1264,6 +1301,7 @@ Include realistic mock data and full interactivity.
       code_files: Object.keys(codeFiles).length > 0 ? codeFiles : (existingProject?.code_files || {}),
       preview_url: previewUrl || existingProject?.preview_url || null,
       github_url: githubUrl || existingProject?.github_url || null,
+      github_pages_url: githubPagesUrl || existingProject?.github_pages_url || null,
       status: 'completed',
       generated_at: new Date().toISOString(),
     }
