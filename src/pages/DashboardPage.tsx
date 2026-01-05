@@ -35,11 +35,12 @@ interface BuildRequestWithProject extends BuildRequest {
 }
 
 export function DashboardPage() {
-  const { user, profile } = useAuthStore()
+  const { user, profile, connectGitHub } = useAuthStore()
   const { showToast } = useToast()
   const navigate = useNavigate()
   const [requests, setRequests] = useState<BuildRequestWithProject[]>([])
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [connectingGitHub, setConnectingGitHub] = useState(false)
   const [stats, setStats] = useState({
     totalSubmissions: 0,
     totalVotes: 0,
@@ -286,15 +287,34 @@ export function DashboardPage() {
             <div className="flex-1">
               <p className="text-slate-300 font-medium">Connect GitHub for Auto Repos</p>
               <p className="text-slate-500 text-sm">
-                Sign in with GitHub to automatically create repos when your projects are generated
+                Connect your GitHub account to automatically create repos when your projects are generated
               </p>
             </div>
-            <Link
-              to="/auth"
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+            <button
+              onClick={async () => {
+                setConnectingGitHub(true)
+                const { error } = await connectGitHub()
+                if (error) {
+                  showToast('Failed to connect GitHub. Please try again.', 'error')
+                  setConnectingGitHub(false)
+                }
+                // Don't set loading to false - user will be redirected to GitHub
+              }}
+              disabled={connectingGitHub}
+              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50 flex items-center gap-2"
             >
-              Connect
-            </Link>
+              {connectingGitHub ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <Github className="w-4 h-4" />
+                  Connect GitHub
+                </>
+              )}
+            </button>
           </div>
         )}
       </div>

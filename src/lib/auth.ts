@@ -15,6 +15,7 @@ interface AuthState {
   signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null }>
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signInWithGitHub: () => Promise<{ error: Error | null }>
+  connectGitHub: () => Promise<{ error: Error | null }>
   signInWithGoogle: () => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>
@@ -185,6 +186,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { error: null }
     } catch (error) {
       console.error('Auth: Unexpected GitHub sign in error:', error)
+      return { error: error as Error }
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  // Connect GitHub to existing account (forces fresh OAuth token capture)
+  connectGitHub: async () => {
+    set({ loading: true })
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?reconnect=true`,
+          scopes: 'repo user:email',
+          skipBrowserRedirect: false
+        }
+      })
+      
+      if (error) {
+        console.error('Auth: GitHub connect error:', error.message)
+        return { error }
+      }
+      
+      return { error: null }
+    } catch (error) {
+      console.error('Auth: Unexpected GitHub connect error:', error)
       return { error: error as Error }
     } finally {
       set({ loading: false })
