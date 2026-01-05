@@ -25,28 +25,43 @@ export function LeaderboardPage() {
   async function fetchLeaderboard() {
     setLoading(true)
     try {
-      // Fetch users with their submission stats
+      // Fetch users with their actual stats from the database
       const { data, error } = await supabase
         .from('profiles')
         .select(`
           id,
           username,
-          avatar_url
+          avatar_url,
+          total_votes_received,
+          wins_count
         `)
+        .order('total_votes_received', { ascending: false, nullsFirst: false })
         .limit(50)
 
       if (error) throw error
 
-      // For now, create mock leaderboard data
-      // In production, you'd join with submissions and votes tables
-      const leaderboardData: LeaderboardUser[] = (data || []).map((user) => ({
-        id: user.id,
-        username: user.username || `user_${user.id.slice(0, 8)}`,
-        avatar_url: user.avatar_url,
-        total_votes: Math.floor(Math.random() * 500) + 10,
-        submissions_count: Math.floor(Math.random() * 20) + 1,
-        wins_count: Math.floor(Math.random() * 5)
-      })).sort((a, b) => b.total_votes - a.total_votes)
+      // Count submissions for each user
+      const leaderboardData: LeaderboardUser[] = await Promise.all(
+        (data || []).map(async (user) => {
+          // Get submission count for this user
+          const { count } = await supabase
+            .from('build_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+
+          return {
+            id: user.id,
+            username: user.username || `user_${user.id.slice(0, 8)}`,
+            avatar_url: user.avatar_url,
+            total_votes: user.total_votes_received || 0,
+            submissions_count: count || 0,
+            wins_count: user.wins_count || 0
+          }
+        })
+      )
+
+      // Sort by total votes (already sorted but ensure consistency)
+      leaderboardData.sort((a, b) => b.total_votes - a.total_votes)
 
       setUsers(leaderboardData)
     } catch (error) {

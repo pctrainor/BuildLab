@@ -477,6 +477,7 @@ export type Database = {
           referral_code: string | null
           referred_by: string | null
           reputation_score: number | null
+          stripe_customer_id: string | null
           total_votes_received: number | null
           updated_at: string | null
           username: string

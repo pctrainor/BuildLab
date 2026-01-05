@@ -264,27 +264,6 @@ export function HomePage() {
 
       {/* Competition Countdown with Calendar */}
       <CompetitionCountdown />
-
-      {/* Stats */}
-      <section className="py-24 bg-slate-950">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { value: '2,400+', label: 'Ideas Submitted' },
-              { value: '156', label: 'Projects Built' },
-              { value: '89%', label: 'Client Satisfaction' },
-              { value: '12K+', label: 'Community Members' }
-            ].map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-cyan-400 via-cyan-300 to-purple-400 bg-clip-text text-transparent mb-2">
-                  {stat.value}
-                </div>
-                <div className="text-slate-400">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
     </div>
   )
 }
