@@ -26,6 +26,13 @@ export function AuthCallbackPage() {
           const providerToken = data.session.provider_token
           const provider = user.app_metadata?.provider
 
+          console.log('🔍 Auth Callback Debug:', {
+            provider,
+            hasProviderToken: !!providerToken,
+            providerToken: providerToken ? 'TOKEN_EXISTS' : 'NO_TOKEN',
+            user_metadata: user.user_metadata
+          })
+
           // Check if profile exists, if not create one
           const { data: profile } = await supabase
             .from('profiles')
@@ -50,6 +57,12 @@ export function AuthCallbackPage() {
             github_connected_at: new Date().toISOString()
           } : {}
 
+          console.log('📝 GitHub Data to Save:', provider === 'github' ? {
+            willSaveToken: !!providerToken,
+            username: user.user_metadata?.user_name || user.user_metadata?.preferred_username,
+            hasGithubData: Object.keys(githubData).length > 0
+          } : 'Not a GitHub login')
+
           if (!profile) {
             // Create new profile with GitHub token if applicable
             await supabase.from('profiles').insert({
@@ -62,10 +75,17 @@ export function AuthCallbackPage() {
             })
           } else if (provider === 'github' && providerToken) {
             // Update existing profile with GitHub token
-            await supabase.from('profiles').update({
+            console.log('✅ Updating existing profile with GitHub token')
+            const { error: updateError } = await supabase.from('profiles').update({
               ...githubData,
               avatar_url: user.user_metadata?.avatar_url || undefined
             }).eq('id', user.id)
+            
+            if (updateError) {
+              console.error('❌ Failed to update profile with GitHub token:', updateError)
+            } else {
+              console.log('✅ Successfully updated profile with GitHub token')
+            }
           }
 
           await fetchProfile()
