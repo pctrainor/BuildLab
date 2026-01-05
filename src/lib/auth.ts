@@ -54,11 +54,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       
       // Listen for auth changes
-      supabase.auth.onAuthStateChange(async (_event, session) => {
-        console.log('Auth: State changed', _event, !!session)
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Auth: State changed', event, !!session)
         set({ user: session?.user ?? null, session })
         
         if (session?.user) {
+          // CRITICAL: Capture GitHub provider token during SIGNED_IN event
+          if (event === 'SIGNED_IN' && session.provider_token) {
+            const provider = session.user.app_metadata?.provider
+            
+            console.log('🔥 SIGNED_IN Event - Provider Token Available!', {
+              provider,
+              hasToken: !!session.provider_token,
+              tokenLength: session.provider_token?.length,
+              event
+            })
+            
+            // If this is a GitHub login, save the token immediately
+            if (provider === 'github') {
+              const githubUsername = session.user.user_metadata?.user_name || session.user.user_metadata?.preferred_username
+              
+              console.log('💾 Saving GitHub token to profile...')
+              const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                  github_access_token: session.provider_token,
+                  github_username: githubUsername,
+                  github_connected_at: new Date().toISOString()
+                })
+                .eq('id', session.user.id)
+              
+              if (updateError) {
+                console.error('❌ Failed to save GitHub token:', updateError)
+              } else {
+                console.log('✅ GitHub token saved successfully!')
+              }
+            }
+          }
+          
           // Don't block on profile fetch - do it in background
           get().fetchProfile().catch(e => console.warn('Auth: Background profile fetch failed:', e))
         } else {
