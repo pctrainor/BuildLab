@@ -650,7 +650,7 @@ Generate ONLY the file content. No markdown fences, no explanation.
   }
   
   // Validate we have minimum required files
-  const requiredFiles = ['package.json', 'index.html', 'src/main.tsx', 'src/App.tsx', 'src/index.css']
+  const requiredFiles = ['package.json', 'index.html', 'vite.config.ts', 'src/main.tsx', 'src/App.tsx', 'src/index.css']
   const missingFiles = requiredFiles.filter(f => !codeFiles[f])
   
   if (missingFiles.length > 0) {
@@ -712,7 +712,7 @@ function getDefaultFileContent(filePath: string, context: string): string {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>`,
 
@@ -726,6 +726,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 )`,
+
+    'vite.config.ts': `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  base: './', // Use relative paths for GitHub Pages
+})`,
 
     'src/App.tsx': `import React from 'react'
 import { Sparkles } from 'lucide-react'
